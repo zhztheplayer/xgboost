@@ -8,10 +8,10 @@ pom_template = """
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>ml.dmlc</groupId>
-  <artifactId>xgboost4j-tester_2.12</artifactId>
+  <artifactId>xgboost4j-tester_2.11</artifactId>
   <version>1.0-SNAPSHOT</version>
 
-  <name>xgboost4j-tester_2.12</name>
+  <name>xgboost4j-tester_2.11</name>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -192,7 +192,7 @@ pom_template = """
         <version>2.22.1</version>
         <configuration>
           <dependenciesToScan>
-            <dependency>ml.dmlc:xgboost4j_2.12</dependency>
+            <dependency>ml.dmlc:xgboost4j_2.11</dependency>
           </dependenciesToScan>
         </configuration>
       </plugin>

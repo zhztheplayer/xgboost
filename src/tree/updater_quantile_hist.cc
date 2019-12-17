@@ -38,7 +38,7 @@ void QuantileHistMaker::Configure(const Args& args) {
     pruner_.reset(TreeUpdater::Create("prune", tparam_));
   }
   pruner_->Configure(args);
-  param_.UpdateAllowUnknown(args);
+  param_.InitAllowUnknown(args);
   is_gmat_initialized_ = false;
 
   // initialize the split evaluator
@@ -455,8 +455,15 @@ void QuantileHistMaker::Builder::CreateNewNodesBatch(
     const int32_t right_id = node.RightChild();
     row_set_collection_.AddSplit(nid, n_left, left_id, right_id);
 
-    if (rabit::IsDistributed() ||
-        row_set_collection_[left_id].Size() < row_set_collection_[right_id].Size()) {
+    size_t node_sizes[2] = { row_set_collection_[left_id ].Size(),
+                             row_set_collection_[right_id].Size() };
+
+    if (rabit::IsDistributed()) {
+      // compute amount of samples in each dtree node accross all distributed workers
+      rabit::Allreduce<rabit::op::Sum>(&node_sizes[0], 2);
+    }
+
+    if (node_sizes[0] < node_sizes[1]) {  // left size < right size
       temp_qexpand_depth->push_back(ExpandEntry(left_id, right_id, nid,
             depth + 1, 0.0, (*timestamp)++));
     } else {
@@ -589,7 +596,7 @@ void QuantileHistMaker::Builder::BuildHistsBatch(const std::vector<ExpandEntry>&
 
   // 3. Merge grad stats for each node
   //    Sync histograms in case of distributed computation
-  SyncHistograms(p_tree, nodes, hist_buffers, hist_is_init, grad_stats);
+  SyncHistograms(p_tree, nodes, hist_buffers, hist_is_init, grad_stats, gmat);
 
   perf_monitor.UpdatePerfTimer(TreeGrowingPerfMonitor::timer_name::BUILD_HIST);
 }
@@ -599,28 +606,46 @@ void QuantileHistMaker::Builder::SyncHistograms(
     const std::vector<ExpandEntry>& nodes,
     std::vector<std::vector<common::GradStatHist::GradType*>>* hist_buffers,
     std::vector<std::vector<uint8_t>>* hist_is_init,
-    const std::vector<std::vector<common::GradStatHist>>& grad_stats) {
+    const std::vector<std::vector<common::GradStatHist>>& grad_stats,
+    const GHistIndexMatrix &gmat) {
   if (rabit::IsDistributed()) {
     const int size = nodes.size();
-    #pragma omp parallel for  // TODO(egorsmir): replace to n_features * nodes.size()
-    for (int i = 0; i < size; ++i) {
-      const int32_t nid = nodes[i].nid;
+    const std::vector<uint32_t>& cut_ptr = gmat.cut.Ptrs();
+    const size_t n_features = cut_ptr.size() - 1;
+
+    #pragma omp parallel for
+    for (int i = 0; i < size * n_features; ++i) {
+      const size_t node = i / n_features;
+      const size_t fid  = i % n_features;
+      const int32_t nid = nodes[node].nid;
       common::GradStatHist::GradType* hist_data =
           reinterpret_cast<common::GradStatHist::GradType*>(hist_[nid].data());
 
-      ReduceHistograms(hist_data, nullptr, nullptr, 0,  hist_builder_.GetNumBins() * 2, i,
+      ReduceHistograms(hist_data, nullptr, nullptr, cut_ptr[fid] * 2,  cut_ptr[fid + 1] * 2, node,
           *hist_is_init, *hist_buffers);
     }
 
+    // TODO(egorsmir): potential hotspot in case of many computation nodes
     for (auto elem : nodes) {
       this->histred_.Allreduce(hist_[elem.nid].data(), hist_builder_.GetNumBins());
     }
 
-    // TODO(egorsmir): add parallel for
-    for (auto elem : nodes) {
-      if (elem.sibling_nid > -1) {
-        SubtractionTrick(hist_[elem.sibling_nid], hist_[elem.nid],
-                       hist_[(*p_tree)[elem.sibling_nid].Parent()]);
+    #pragma omp parallel for
+    for (int i = 0; i < size * n_features; ++i) {
+      const size_t node = i / n_features;
+      const size_t fid  = i % n_features;
+      const int32_t nid = nodes[node].nid;
+      const int32_t sibling_nid = nodes[node].sibling_nid;
+      const int32_t parent_nid = (*p_tree)[sibling_nid].Parent();
+
+      if (sibling_nid > -1) {
+        common::GradStatHist* p_self    = hist_[sibling_nid].data() + cut_ptr[fid];
+        common::GradStatHist* p_sibling = hist_[nid].data() + cut_ptr[fid];
+        common::GradStatHist* p_parent  = hist_[parent_nid].data() + cut_ptr[fid];
+
+        for (size_t bin_id = 0; bin_id < cut_ptr[fid+1] - cut_ptr[fid]; bin_id++) {
+           p_self[bin_id].SetSubstract(p_parent[bin_id], p_sibling[bin_id]);
+        }
       }
     }
   }
@@ -1076,10 +1101,13 @@ void QuantileHistMaker::Builder::EvaluateSplitsBatch(
     }
   }
 
-  // rabit::IsDistributed is not thread-safe
-  auto isDistributed = rabit::IsDistributed();
   // partial results
   std::vector<std::pair<SplitEntry, SplitEntry>> splits(tasks.size());
+
+  // result of rabit::IsDistributed() inside parallel loop is false always
+  // so compute it once before parallel loop
+  const bool isDistr = rabit::IsDistributed();
+
   // parallel enumeration
   #pragma omp parallel for schedule(static)
   for (omp_ulong i = 0; i < tasks.size(); ++i) {
@@ -1090,16 +1118,16 @@ void QuantileHistMaker::Builder::EvaluateSplitsBatch(
     const int32_t  sibling_nid = nodes[node_idx].sibling_nid;
     const int32_t  parent_nid  = nodes[node_idx].parent_nid;
 
-    // reduce needed part of a hist here to have it in cache before enumeration
-    if (!isDistributed) {
-      auto hist_data = reinterpret_cast<common::GradStatHist::GradType *>(hist_[nid].data());
-      auto sibling_hist_data = sibling_nid > -1 ?
-                               reinterpret_cast<common::GradStatHist::GradType *>(
-                                   hist_[sibling_nid].data()) : nullptr;
-      auto parent_hist_data = sibling_nid > -1 ?
-                              reinterpret_cast<common::GradStatHist::GradType *>(
-                                  hist_[parent_nid].data()) : nullptr;
+    common::GradStatHist::GradType* hist_data =
+        reinterpret_cast<common::GradStatHist::GradType*>(hist_[nid].data());
+    common::GradStatHist::GradType* sibling_hist_data = sibling_nid > -1 ?
+        reinterpret_cast<common::GradStatHist::GradType*>(
+          hist_[sibling_nid].data()) : nullptr;
+    common::GradStatHist::GradType* parent_hist_data  = sibling_nid > -1 ?
+        reinterpret_cast<common::GradStatHist::GradType*>(hist_[parent_nid].data()) : nullptr;
 
+    // reduce needed part of a hist here to have it in cache before enumeration
+    if (!isDistr) {
       const std::vector<uint32_t>& cut_ptr = gmat.cut.Ptrs();
       const size_t ibegin = 2 * cut_ptr[fid];
       const size_t iend = 2 * cut_ptr[fid + 1];
