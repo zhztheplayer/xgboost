@@ -8,6 +8,7 @@
 #include <xgboost/data.h>
 #include "./simple_batch_iterator.h"
 #include "../common/random.h"
+#include "pthread.h"
 
 namespace xgboost {
 namespace data {
@@ -75,5 +76,94 @@ BatchSet<EllpackPage> SimpleDMatrix::GetEllpackBatches(const BatchParam& param) 
 }
 
 bool SimpleDMatrix::SingleColBlock() const { return true; }
+
+// static members
+BatchedDMatrix* BatchedDMatrix::newMat_{nullptr};
+std::mutex BatchedDMatrix::batchMutex_;
+BatchedDMatrix* BatchedDMatrix::getBatchedDMatrix() {
+  std::lock_guard<std::mutex> lg(batchMutex_);
+  if (!newMat_) {
+    newMat_ = new BatchedDMatrix();
+  }
+  return newMat_;
+}
+
+MetaInfo& BatchedDMatrix::Info() { 
+  return *info_;
+}
+
+const MetaInfo& BatchedDMatrix::Info() const { 
+  return *info_;
+}
+
+pthread_mutex_t lock;
+
+bool BatchedDMatrix::AddBatch(std::unique_ptr<SimpleCSRSource>&& batch) {
+//  std::unique_lock<std::mutex> ul(batchMutex_);
+  pthread_mutex_lock(&lock);
+  // CreateInfo
+  auto& src_labels = batch->info.labels_.HostVector();
+  auto& labels = info_->labels_.HostVector();
+  labels.insert(labels.end(), src_labels.begin(), src_labels.end());
+  // weights
+  auto& src_weights = batch->info.weights_.HostVector();
+  auto& weights = info_->weights_.HostVector();
+  weights.insert(weights.end(), src_weights.begin(), src_weights.end());
+  // group_ptr
+  auto& src_gptr = batch->info.group_ptr_;
+  auto& gptr = info_->group_ptr_;
+  gptr.insert(gptr.end(), src_gptr.begin(), src_gptr.end());
+  // num_row
+  info_->num_row_ += batch->info.num_row_;
+  // num_col
+  if (info_->num_col_ == 0) {
+    info_->num_col_ = batch->info.num_col_;
+  } else {
+    CHECK_EQ(info_->num_col_, batch->info.num_col_) << "invalid data, num_col mismatch";
+  }
+  // num_nonzero
+  info_->num_nonzero_ += batch->info.num_nonzero_;
+  pthread_mutex_unlock(&lock);
+
+  sources_.push_front(std::move(batch));
+  newMat_ = nullptr;
+  return true;
+}
+
+float BatchedDMatrix::GetColDensity(size_t cidx) {
+  // for now, assuming BatchedDMatrix is always dense
+  return 1.0f;
+}
+
+BatchSet<SparsePage> BatchedDMatrix::GetRowBatches() {
+  std::lock_guard<std::mutex> lg(batchMutex_);
+  auto begin_iter = BatchIterator<SparsePage>(new BatchSetIteratorImpl(sources_));
+  return BatchSet<SparsePage>(begin_iter);
+}
+
+BatchSet<CSCPage> BatchedDMatrix::GetColumnBatches() {
+  LOG(FATAL) << "method not implemented";
+}
+
+BatchSet<SortedCSCPage> BatchedDMatrix::GetSortedColumnBatches() {
+  LOG(FATAL) << "method not implemented";
+}
+
+BatchSet<EllpackPage> BatchedDMatrix::GetEllpackBatches(const BatchParam& param) {
+  LOG(FATAL) << "method not implemented";
+}
+
+bool BatchedDMatrix::SingleColBlock() const { return true; }
+
+size_t BatchedDMatrix::GetNumRows() {
+  size_t nrows = 0;
+  auto batches = GetRowBatches();
+  for (const auto& batch : batches) {
+    // std::cout << "batch size = " << batch.Size() << "\n";
+    nrows += batch.Size();
+  }
+  return nrows;
+}
+
 }  // namespace data
 }  // namespace xgboost

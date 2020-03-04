@@ -473,6 +473,8 @@ class DMatrix {
                          const std::string& cache_prefix = "",
                          size_t page_size = kPageSize);
 
+  static DMatrix* CreateOrMerge(dmlc::Parser<uint32_t>* parser);
+
   /*! \brief page size 32 MB */
   static const size_t kPageSize = 32UL << 20UL;
 

@@ -51,6 +51,9 @@ class XGBoostJNI {
 
   public final static native String XGBGetLastError();
 
+  final static native int XGDMatrixCreateByMergingDataIters(java.util.Iterator<DataBatch> iter,
+                                                             long[] out);
+
   public final static native int XGDMatrixCreateFromFile(String fname, int silent, long[] out);
 
   final static native int XGDMatrixCreateFromDataIter(java.util.Iterator<DataBatch> iter,

@@ -16,7 +16,10 @@
 
 package org.apache.spark.rdd
 
+import org.apache.commons.logging.LogFactory
+
 import org.apache.spark.Partition
+import org.apache.spark.SparkException
 import org.apache.spark.scheduler.ExecutorCacheTaskLocation
 
 import scala.collection.mutable
@@ -24,6 +27,8 @@ import scala.collection.mutable.ArrayBuffer
 
 class ExecutorInProcessCoalescePartitioner(val balanceSlack: Double = 0.10)
   extends PartitionCoalescer with Serializable {
+  private val logger = LogFactory.getLog("ExecutorInProcessCoalescePartitioner")
+
   def coalesce(maxPartitions: Int, prev: RDD[_]): Array[PartitionGroup] = {
     val map = new mutable.HashMap[String, mutable.HashSet[Partition]]()
     val groupArr = ArrayBuffer[PartitionGroup]()
@@ -36,6 +41,7 @@ class ExecutorInProcessCoalescePartitioner(val balanceSlack: Double = 0.10)
         partValue.add(p)
         map.put(execLoc, partValue)
       case _ =>
+        logger.error("Invalid location : " + _)
           // skip if not executor cache location
       }
     })
@@ -44,6 +50,8 @@ class ExecutorInProcessCoalescePartitioner(val balanceSlack: Double = 0.10)
       x._2.foreach(part => pg.partitions += part)
       groupArr += pg
     })
+    if (groupArr.length == 0) throw new SparkException("No partitions or" +
+      " no locations for partitions found.")
     return groupArr.toArray
   }
 }

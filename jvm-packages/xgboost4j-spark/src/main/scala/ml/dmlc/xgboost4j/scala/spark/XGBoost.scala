@@ -22,7 +22,6 @@ import java.nio.file.Files
 import scala.collection.{AbstractIterator, mutable}
 import scala.util.Random
 import scala.collection.JavaConverters._
-
 import ml.dmlc.xgboost4j.java.{IRabitTracker, Rabit, XGBoostError, RabitTracker => PyRabitTracker}
 import ml.dmlc.xgboost4j.scala.rabit.RabitTracker
 import ml.dmlc.xgboost4j.scala.spark.CheckpointManager.CheckpointParam
@@ -31,9 +30,11 @@ import ml.dmlc.xgboost4j.scala.{XGBoost => SXGBoost, _}
 import ml.dmlc.xgboost4j.{LabeledPoint => XGBLabeledPoint}
 import org.apache.commons.io.FileUtils
 import org.apache.commons.logging.LogFactory
-
-import org.apache.spark.rdd.RDD
-import org.apache.spark.{SparkContext, SparkParallelismTracker, TaskContext, TaskFailedListener}
+import org.apache.spark.internal.config._
+import org.apache.spark.launcher.SparkLauncher
+import org.apache.spark.resource.{ExecutorResourceRequests, ResourceProfile, ResourceProfileBuilder, ResourceUtils, TaskResourceRequests}
+import org.apache.spark.rdd.{ExecutorInProcessCoalescePartitioner, RDD}
+import org.apache.spark.{SparkConf, SparkContext, SparkException, SparkParallelismTracker, TaskContext, TaskFailedListener}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.storage.StorageLevel
 
@@ -128,8 +129,19 @@ private[this] class XGBoostExecutionParamsFactory(rawParams: Map[String, Any], s
   private def overrideParams(
       params: Map[String, Any],
       sc: SparkContext): Map[String, Any] = {
-    val coresPerTask = sc.getConf.getInt("spark.task.cpus", 1)
+//    val coresPerTask = sc.getConf.getInt("spark.task.cpus", 1)
+//    require(coresPerTask == 1, "spark.task.cpus must be set to 1")
+    val coresPerExecutor = sc.getConf.getInt("spark.executor.cores", 1)
     var overridedParams = params
+    if (overridedParams.contains("nthread")) {
+      val nThread = overridedParams("nthread").toString.toInt
+//      require(nThread == coresPerExecutor,
+//        s"the nthread configuration ($nThread) must be equal to " +
+//          s"spark.executor.cores ($coresPerExecutor)")
+    } else {
+        overridedParams = overridedParams + ("nthread" -> coresPerExecutor)
+    }
+    /*
     if (overridedParams.contains("nthread")) {
       val nThread = overridedParams("nthread").toString.toInt
       require(nThread <= coresPerTask,
@@ -138,7 +150,7 @@ private[this] class XGBoostExecutionParamsFactory(rawParams: Map[String, Any], s
     } else {
       overridedParams = overridedParams + ("nthread" -> coresPerTask)
     }
-
+*/
     val numEarlyStoppingRounds = overridedParams.getOrElse(
       "num_early_stopping_rounds", 0).asInstanceOf[Int]
     overridedParams += "num_early_stopping_rounds" -> numEarlyStoppingRounds
@@ -289,6 +301,7 @@ object XGBoost extends Serializable {
   private[spark] def processMissingValues(
       xgbLabelPoints: Iterator[XGBLabeledPoint],
       missing: Float): Iterator[XGBLabeledPoint] = {
+    /*
     if (!missing.isNaN) {
       removeMissingValues(verifyMissingSetting(xgbLabelPoints, missing),
         missing, (v: Float) => v != missing)
@@ -296,6 +309,8 @@ object XGBoost extends Serializable {
       removeMissingValues(verifyMissingSetting(xgbLabelPoints, missing),
         missing, (v: Float) => !v.isNaN)
     }
+    */
+    xgbLabelPoints
   }
 
   private def processMissingValuesWithGroup(
@@ -327,37 +342,38 @@ object XGBoost extends Serializable {
       round: Int,
       obj: ObjectiveTrait,
       eval: EvalTrait,
-      prevBooster: Booster): Iterator[(Booster, Map[String, Array[Float]])] = {
+      prevBooster: Booster): Iterator[Option[(Booster, Map[String, Array[Float]])]] = {
+    if (watches.toMap.contains("train")) {
+      // to workaround the empty partitions in training dataset,
+      // this might not be the best efficient implementation, see
+      // (https://github.com/dmlc/xgboost/issues/1277)
+      if (watches.toMap("train").rowNum == 0) {
+        throw new XGBoostError(
+          s"detected an empty partition in the training data, partition ID:" +
+            s" ${TaskContext.getPartitionId()}")
+      }
+      val taskId = TaskContext.getPartitionId().toString
+      rabitEnv.put("DMLC_TASK_ID", taskId)
+      rabitEnv.put("DMLC_WORKER_STOP_PROCESS_ON_ERROR", "false")
 
-    // to workaround the empty partitions in training dataset,
-    // this might not be the best efficient implementation, see
-    // (https://github.com/dmlc/xgboost/issues/1277)
-    if (watches.toMap("train").rowNum == 0) {
-      throw new XGBoostError(
-        s"detected an empty partition in the training data, partition ID:" +
-          s" ${TaskContext.getPartitionId()}")
-    }
-    val taskId = TaskContext.getPartitionId().toString
-    val attempt = TaskContext.get().attemptNumber.toString
-    rabitEnv.put("DMLC_TASK_ID", taskId)
-    rabitEnv.put("DMLC_NUM_ATTEMPT", attempt)
-    rabitEnv.put("DMLC_WORKER_STOP_PROCESS_ON_ERROR", "false")
-
-    try {
-      Rabit.init(rabitEnv)
-      val numEarlyStoppingRounds = xgbExecutionParam.earlyStoppingParams.numEarlyStoppingRounds
-      val metrics = Array.tabulate(watches.size)(_ => Array.ofDim[Float](round))
-      val booster = SXGBoost.train(watches.toMap("train"), xgbExecutionParam.toMap, round,
-        watches.toMap, metrics, obj, eval,
-        earlyStoppingRound = numEarlyStoppingRounds, prevBooster)
-      Iterator(booster -> watches.toMap.keys.zip(metrics).toMap)
-    } catch {
-      case xgbException: XGBoostError =>
-        logger.error(s"XGBooster worker $taskId has failed $attempt times due to ", xgbException)
-        throw xgbException
-    } finally {
-      Rabit.shutdown()
-      watches.delete()
+      try {
+        Rabit.init(rabitEnv)
+        val numEarlyStoppingRounds = xgbExecutionParam.earlyStoppingParams.numEarlyStoppingRounds
+        val metrics = Array.tabulate(watches.size)(_ => Array.ofDim[Float](round))
+        val booster = SXGBoost.train(watches.toMap("train"), xgbExecutionParam.toMap, round,
+          watches.toMap, metrics, obj, eval,
+          earlyStoppingRound = numEarlyStoppingRounds, prevBooster)
+        Iterator(Some(booster -> watches.toMap.keys.zip(metrics).toMap))
+      } catch {
+        case xgbException: XGBoostError =>
+          logger.error(s"XGBooster worker $taskId has failed due to ", xgbException)
+          throw xgbException
+      } finally {
+        Rabit.shutdown()
+        watches.delete()
+      }
+    } else {
+      Iterator(None)
     }
   }
 
@@ -424,15 +440,27 @@ object XGBoost extends Serializable {
       rabitEnv: java.util.Map[String, String],
       checkpointRound: Int,
       prevBooster: Booster,
-      evalSetsMap: Map[String, RDD[XGBLabeledPoint]]): RDD[(Booster, Map[String, Array[Float]])] = {
+      evalSetsMap: Map[String, RDD[XGBLabeledPoint]]
+      ): RDD[Option[(Booster, Map[String, Array[Float]])]] = {
     if (evalSetsMap.isEmpty) {
-      trainingData.mapPartitions(labeledPoints => {
+      val watchRDD = trainingData.mapPartitions(labeledPoints => {
         val watches = Watches.buildWatches(xgbExecutionParams,
           processMissingValues(labeledPoints, xgbExecutionParams.missing),
-          getCacheDirName(xgbExecutionParams.useExternalMemory))
-        buildDistributedBooster(watches, xgbExecutionParams, rabitEnv, checkpointRound,
-          xgbExecutionParams.obj, xgbExecutionParams.eval, prevBooster)
+          getCacheDirName(xgbExecutionParams.useExternalMemory), true)
+        Iterator(watches)
       }).cache()
+
+      val trainRP = createResourceProfile(trainingData, watchRDD)
+
+      // trigger the job to execute and cache the prev RDD
+      watchRDD.foreachPartition(() => _)
+      logger.error("RDD count : " + watchRDD.count())
+      watchRDD.coalesce(1,  // ExecutorInProcessCoalescePartitioner ignores numPartitions
+          partitionCoalescer = Some(new ExecutorInProcessCoalescePartitioner()))
+        .mapPartitions( watches => {
+          buildDistributedBooster(watches.next(), xgbExecutionParams, rabitEnv, checkpointRound,
+          xgbExecutionParams.obj, xgbExecutionParams.eval, prevBooster)
+      }).withResources(trainRP).cache()
     } else {
       coPartitionNoGroupSets(trainingData, evalSetsMap, xgbExecutionParams.numWorkers).
         mapPartitions {
@@ -442,11 +470,100 @@ object XGBoost extends Serializable {
                 case (name, iter) => (name, processMissingValues(iter,
                   xgbExecutionParams.missing))
               },
-              getCacheDirName(xgbExecutionParams.useExternalMemory))
+              getCacheDirName(xgbExecutionParams.useExternalMemory), true)
             buildDistributedBooster(watches, xgbExecutionParams, rabitEnv, checkpointRound,
               xgbExecutionParams.obj, xgbExecutionParams.eval, prevBooster)
         }.cache()
     }
+  }
+
+  private def createResourceProfile(trainingData: RDD[XGBLabeledPoint], watchRDD: RDD[Watches]) = {
+    val ereq: ExecutorResourceRequests = if (watchRDD.getResourceProfile() != null) {
+      val ereqs = new ExecutorResourceRequests()
+      watchRDD.getResourceProfile().executorResources.foreach { req =>
+        ereqs.resource(req._1, req._2.amount, req._2.discoveryScript,
+          req._2.vendor)
+      }
+      ereqs
+    } else {
+      defaultExecutorResources(trainingData.sparkContext.getConf)
+    }
+    val rpBuilder = new ResourceProfileBuilder()
+    val treq = new TaskResourceRequests()
+    treq.cpus(ereq.requests.get(ResourceProfile.CORES).get.amount.toInt)
+    val trainRP = rpBuilder.require(ereq).require(treq).build
+    trainRP
+  }
+
+  private def defaultExecutorResources(conf: SparkConf): ExecutorResourceRequests = {
+    val ereqs = new ExecutorResourceRequests()
+    ereqs.cores(conf.getInt(SparkLauncher.EXECUTOR_CORES, 1))
+    ereqs.memory(conf.get(SparkLauncher.EXECUTOR_MEMORY, "1g"))
+    try {
+      ereqs.memoryOverhead(conf.get("spark.executor.memoryOverhead"))
+    } catch {
+      // ignore if the param doesn't exist
+      case scala.util.control.NonFatal(t) =>
+    }
+    try {
+      ereqs.pysparkMemory(conf.get("spark.executor.pyspark.memory"))
+    } catch {
+      // ignore if the param doesn't exist
+      case scala.util.control.NonFatal(t) =>
+    }
+
+    val execReq = parseAllResourceRequests(conf, "spark.executor")
+    execReq.foreach { req =>
+      val name = req.id.resourceName
+      ereqs.resource(name, req.amount, req.discoveryScript.getOrElse(""),
+        req.vendor.getOrElse(""))
+    }
+    ereqs
+  }
+
+  // known types of resources
+  private final val GPU: String = "gpu"
+  private final val FPGA: String = "fpga"
+
+  private final val RESOURCE_PREFIX: String = "resource"
+  private final val DISCOVERY_SCRIPT = "discoveryScript"
+  private final val VENDOR = "vendor"
+  // user facing configs use .amount to allow to extend in the future,
+  // internally we currently only support addresses, so its just an integer count
+  private final  val AMOUNT = "amount"
+
+  def parseAllResourceRequests(
+      sparkConf: SparkConf,
+      componentName: String): Seq[ResourceRequest] = {
+    listResourceIds(sparkConf, componentName)
+      .map(id => parseResourceRequest(sparkConf, id))
+      .filter(_.amount > 0)
+  }
+
+  def listResourceIds(sparkConf: SparkConf, componentName: String): Seq[ResourceID] = {
+    sparkConf.getAllWithPrefix(s"$componentName.$RESOURCE_PREFIX.").map { case (key, _) =>
+      key.substring(0, key.indexOf('.'))
+    }.toSet.toSeq.map(name => ResourceID(componentName, name))
+  }
+
+  case class ResourceID(componentName: String, resourceName: String){
+    def confPrefix: String = s"$componentName.${RESOURCE_PREFIX}.$resourceName."
+  }
+
+  case class ResourceRequest(
+      id: ResourceID,
+      amount: Int,
+      discoveryScript: Option[String],
+      vendor: Option[String])
+
+  def parseResourceRequest(sparkConf: SparkConf, resourceId: ResourceID): ResourceRequest = {
+    val settings = sparkConf.getAllWithPrefix(resourceId.confPrefix).toMap
+    val amount = settings.getOrElse(AMOUNT,
+      throw new SparkException(s"You must specify an amount for ${resourceId.resourceName}")
+    ).toInt
+    val discoveryScript = settings.get(DISCOVERY_SCRIPT)
+    val vendor = settings.get(VENDOR)
+    ResourceRequest(resourceId, amount, discoveryScript, vendor)
   }
 
   private def trainForRanking(
@@ -455,12 +572,13 @@ object XGBoost extends Serializable {
       rabitEnv: java.util.Map[String, String],
       checkpointRound: Int,
       prevBooster: Booster,
-      evalSetsMap: Map[String, RDD[XGBLabeledPoint]]): RDD[(Booster, Map[String, Array[Float]])] = {
+      evalSetsMap: Map[String, RDD[XGBLabeledPoint]]
+      ): RDD[Option[(Booster, Map[String, Array[Float]])]] = {
     if (evalSetsMap.isEmpty) {
       trainingData.mapPartitions(labeledPointGroups => {
         val watches = Watches.buildWatchesWithGroup(xgbExecutionParam,
           processMissingValuesWithGroup(labeledPointGroups, xgbExecutionParam.missing),
-          getCacheDirName(xgbExecutionParam.useExternalMemory))
+          getCacheDirName(xgbExecutionParam.useExternalMemory), true)
         buildDistributedBooster(watches, xgbExecutionParam, rabitEnv, checkpointRound,
           xgbExecutionParam.obj, xgbExecutionParam.eval, prevBooster)
       }).cache()
@@ -472,7 +590,7 @@ object XGBoost extends Serializable {
               case (name, iter) => (name, processMissingValuesWithGroup(iter,
                 xgbExecutionParam.missing))
             },
-            getCacheDirName(xgbExecutionParam.useExternalMemory))
+            getCacheDirName(xgbExecutionParam.useExternalMemory), true)
           buildDistributedBooster(watches, xgbExecutionParam, rabitEnv, checkpointRound,
             xgbExecutionParam.obj,
             xgbExecutionParam.eval,
@@ -526,12 +644,14 @@ object XGBoost extends Serializable {
         xgbExecParams.checkpointParam.checkpointInterval,
         xgbExecParams.round).map {
         checkpointRound: Int =>
-          val tracker = startTracker(xgbExecParams.numWorkers, xgbExecParams.trackerConf)
+        // Compute number of active workers
+        val numActiveWorkers =
+          xgbExecParams.numWorkers/sc.getConf.getInt("spark.executor.cores", 1)
+        val tracker = startTracker(numActiveWorkers, xgbExecParams.trackerConf)
           try {
             val parallelismTracker = new SparkParallelismTracker(sc,
               xgbExecParams.timeoutRequestWorkers,
               xgbExecParams.numWorkers)
-
             tracker.getWorkerEnvs().putAll(xgbRabitParams)
             val boostersAndMetrics = if (hasGroup) {
               trainForRanking(transformedTrainingData.left.get, xgbExecParams,
@@ -653,7 +773,7 @@ object XGBoost extends Serializable {
 
   private def postTrackerReturnProcessing(
       trackerReturnVal: Int,
-      distributedBoostersAndMetrics: RDD[(Booster, Map[String, Array[Float]])],
+      distributedBoostersAndMetrics: RDD[Option[(Booster, Map[String, Array[Float]])]],
       sparkJobThread: Thread): (Booster, Map[String, Array[Float]]) = {
     if (trackerReturnVal == 0) {
       // Copies of the final booster and the corresponding metrics
@@ -662,7 +782,9 @@ object XGBoost extends Serializable {
       // it's safe to block here forever, as the tracker has returned successfully, and the Spark
       // job should have finished, there is no reason for the thread cannot return
       sparkJobThread.join()
-      val (booster, metrics) = distributedBoostersAndMetrics.first()
+      val (booster, metrics) = distributedBoostersAndMetrics
+        .filter(value => value.isDefined)
+        .first().get
       distributedBoostersAndMetrics.unpersist(false)
       (booster, metrics)
     } else {
@@ -702,7 +824,6 @@ private class Watches private(
 }
 
 private object Watches {
-
   private def fromBaseMarginsToArray(baseMargins: Iterator[Float]): Option[Array[Float]] = {
     val builder = new mutable.ArrayBuilder.ofFloat()
     var nTotal = 0
@@ -729,7 +850,8 @@ private object Watches {
 
   def buildWatches(
       nameAndLabeledPointSets: Iterator[(String, Iterator[XGBLabeledPoint])],
-      cachedDirName: Option[String]): Watches = {
+      cachedDirName: Option[String],
+      useBatch: Boolean): Watches = {
     val dms = nameAndLabeledPointSets.map {
       case (name, labeledPoints) =>
         val baseMargins = new mutable.ArrayBuilder.ofFloat
@@ -737,7 +859,8 @@ private object Watches {
           baseMargins += labeledPoint.baseMargin
           labeledPoint
         })
-        val dMatrix = new DMatrix(duplicatedItr, cachedDirName.map(_ + s"/$name").orNull)
+        val dMatrix = new DMatrix(duplicatedItr,
+          cachedDirName.map(_ + s"/$name").orNull, useBatch)
         val baseMargin = fromBaseMarginsToArray(baseMargins.result().iterator)
         if (baseMargin.isDefined) {
           dMatrix.setBaseMargin(baseMargin.get)
@@ -750,7 +873,8 @@ private object Watches {
   def buildWatches(
       xgbExecutionParams: XGBoostExecutionParams,
       labeledPoints: Iterator[XGBLabeledPoint],
-      cacheDirName: Option[String]): Watches = {
+      cacheDirName: Option[String],
+      useBatch: Boolean): Watches = {
     val trainTestRatio = xgbExecutionParams.xgbInputParams.trainTestRatio
     val seed = xgbExecutionParams.xgbInputParams.seed
     val r = new Random(seed)
@@ -767,20 +891,22 @@ private object Watches {
       }
       accepted
     }
-    val trainMatrix = new DMatrix(trainPoints, cacheDirName.map(_ + "/train").orNull)
-    val testMatrix = new DMatrix(testPoints.iterator, cacheDirName.map(_ + "/test").orNull)
+    val trainMatrix = new DMatrix(trainPoints,
+      cacheDirName.map(_ + "/train").orNull, useBatch)
+    val testMatrix = new DMatrix(testPoints.iterator,
+      cacheDirName.map(_ + "/test").orNull, useBatch)
 
     val trainMargin = fromBaseMarginsToArray(trainBaseMargins.result().iterator)
     val testMargin = fromBaseMarginsToArray(testBaseMargins.result().iterator)
     if (trainMargin.isDefined) trainMatrix.setBaseMargin(trainMargin.get)
     if (testMargin.isDefined) testMatrix.setBaseMargin(testMargin.get)
-
     new Watches(Array(trainMatrix, testMatrix), Array("train", "test"), cacheDirName)
   }
 
   def buildWatchesWithGroup(
       nameAndlabeledPointGroupSets: Iterator[(String, Iterator[Array[XGBLabeledPoint]])],
-      cachedDirName: Option[String]): Watches = {
+      cachedDirName: Option[String],
+      useBatch: Boolean): Watches = {
     val dms = nameAndlabeledPointGroupSets.map {
       case (name, labeledPointsGroups) =>
         val baseMargins = new mutable.ArrayBuilder.ofFloat
@@ -805,7 +931,8 @@ private object Watches {
           groupsInfo += groupSize
           true
         })
-        val dMatrix = new DMatrix(iter.flatMap(_.iterator), cachedDirName.map(_ + s"/$name").orNull)
+        val dMatrix = new DMatrix(iter.flatMap(_.iterator),
+          cachedDirName.map(_ + s"/$name").orNull, useBatch)
         val baseMargin = fromBaseMarginsToArray(baseMargins.result().iterator)
         if (baseMargin.isDefined) {
           dMatrix.setBaseMargin(baseMargin.get)
@@ -820,7 +947,8 @@ private object Watches {
   def buildWatchesWithGroup(
       xgbExecutionParams: XGBoostExecutionParams,
       labeledPointGroups: Iterator[Array[XGBLabeledPoint]],
-      cacheDirName: Option[String]): Watches = {
+      cacheDirName: Option[String],
+      useBatch: Boolean): Watches = {
     val trainTestRatio = xgbExecutionParams.xgbInputParams.trainTestRatio
     val seed = xgbExecutionParams.xgbInputParams.seed
     val r = new Random(seed)
@@ -872,11 +1000,13 @@ private object Watches {
     }
 
     val trainPoints = trainLabelPointGroups.flatMap(_.iterator)
-    val trainMatrix = new DMatrix(trainPoints, cacheDirName.map(_ + "/train").orNull)
+    val trainMatrix = new DMatrix(trainPoints,
+      cacheDirName.map(_ + "/train").orNull, useBatch)
     trainMatrix.setGroup(trainGroups.result())
     trainMatrix.setWeight(trainWeights.result())
 
-    val testMatrix = new DMatrix(testPoints.result().iterator, cacheDirName.map(_ + "/test").orNull)
+    val testMatrix = new DMatrix(testPoints.result().iterator,
+      cacheDirName.map(_ + "/test").orNull, useBatch)
     if (trainTestRatio < 1.0) {
       testMatrix.setGroup(testGroups.result())
       testMatrix.setWeight(testWeights.result())

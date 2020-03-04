@@ -17,6 +17,9 @@ package ml.dmlc.xgboost4j.java;
 
 import java.util.Iterator;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
 import ml.dmlc.xgboost4j.LabeledPoint;
 import ml.dmlc.xgboost4j.java.util.BigDenseMatrix;
 
@@ -26,6 +29,7 @@ import ml.dmlc.xgboost4j.java.util.BigDenseMatrix;
  * @author hzx
  */
 public class DMatrix {
+  private static final Log logger = LogFactory.getLog(DMatrix.class);
   protected long handle = 0;
 
   /**
@@ -52,6 +56,32 @@ public class DMatrix {
     Iterator<DataBatch> batchIter = new DataBatch.BatchIterator(iter, batchSize);
     long[] out = new long[1];
     XGBoostJNI.checkCall(XGBoostJNI.XGDMatrixCreateFromDataIter(batchIter, cacheInfo, out));
+    handle = out[0];
+  }
+
+  /**
+   * Create DMatrix from iterator.
+   *
+   * @param iter The data iterator of mini batch to provide the data.
+   * @param cacheInfo Cache path information, used for external memory setting, can be null.
+   * @param useBatch Whether to use batches merging
+   * @throws XGBoostError
+   */
+  public DMatrix(Iterator<LabeledPoint> iter, String cacheInfo,
+          boolean useBatch) throws XGBoostError {
+    if (iter == null) {
+      throw new NullPointerException("iter: null");
+    }
+    // 32k as batch size
+    int batchSize = 32 << 10;
+    Iterator<DataBatch> batchIter = new DataBatch.BatchIterator(iter, batchSize);
+    long[] out = new long[1];
+    if (useBatch) {
+      logger.info("Creating DMatrix by merging data iters.");
+      XGBoostJNI.checkCall(XGBoostJNI.XGDMatrixCreateByMergingDataIters(batchIter, out));
+    } else {
+      XGBoostJNI.checkCall(XGBoostJNI.XGDMatrixCreateFromDataIter(batchIter, cacheInfo, out));
+    }
     handle = out[0];
   }
 

@@ -125,6 +125,18 @@ XGB_DLL int XGDMatrixCreateFromFile(const char *fname,
                                     DMatrixHandle *out);
 
 /*!
+ * \brief Create a DMatrix by merging data iterators.
+ * \param data_handle The handle to the data.
+ * \param callback The callback to get the data.
+ * \param out The created DMatrix
+ * \return 0 when success, -1 when failure happens.
+ */
+XGB_DLL int XGDMatrixCreateByMergingDataIters(
+    DataIterHandle data_handle,
+    XGBCallbackDataIterNext* callback,
+    DMatrixHandle *out);
+
+/*!
  * \brief Create a DMatrix from a data iterator.
  * \param data_handle The handle to the data.
  * \param callback The callback to get the data.
