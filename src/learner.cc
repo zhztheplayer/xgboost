@@ -413,6 +413,7 @@ class LearnerImpl : public Learner {
   }
 
   void UpdateOneIter(int iter, DMatrix* train) override {
+    //train->SummaryByCols();
     monitor_.Start("UpdateOneIter");
 
     if (generic_param_.seed_per_iteration || rabit::IsDistributed()) {
