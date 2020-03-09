@@ -7,6 +7,7 @@
 #ifndef XGBOOST_DATA_H_
 #define XGBOOST_DATA_H_
 
+#include <arrow/api.h>
 #include <dmlc/base.h>
 #include <dmlc/data.h>
 #include <rabit/rabit.h>
@@ -472,6 +473,8 @@ class DMatrix {
   static DMatrix* Create(dmlc::Parser<uint32_t>* parser,
                          const std::string& cache_prefix = "",
                          size_t page_size = kPageSize);
+
+  static DMatrix* Create(arrow::RecordBatchIterator& batches, std::string label);
 
   /*! \brief page size 32 MB */
   static const size_t kPageSize = 32UL << 20UL;

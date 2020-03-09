@@ -112,6 +112,10 @@ if (R_LIB)
   add_subdirectory(${xgboost_SOURCE_DIR}/R-package)
 endif (R_LIB)
 
+find_package(Arrow REQUIRED)
+find_package(Parquet REQUIRED)
+list(APPEND LINKED_LIBRARIES_PRIVATE ${ARROW_SHARED_LIB} ${PARQUET_SHARED_LIB})
+
 # core xgboost
 add_subdirectory(${xgboost_SOURCE_DIR}/plugin)
 add_subdirectory(${xgboost_SOURCE_DIR}/src)
@@ -122,7 +126,8 @@ add_library(xgboost SHARED ${XGBOOST_OBJ_SOURCES})
 target_include_directories(xgboost
   INTERFACE
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include>
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>)
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
+  ${ARROW_INCLUDE_DIR} ${PARQUET_INCLUDE_DIR})
 target_link_libraries(xgboost PRIVATE ${LINKED_LIBRARIES_PRIVATE})
 
 # This creates its own shared library `xgboost4j'.

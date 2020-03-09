@@ -310,6 +310,12 @@ DMatrix* DMatrix::Create(dmlc::Parser<uint32_t>* parser,
   }
 }
 
+DMatrix* DMatrix::Create(arrow::RecordBatchIterator& batches, std::string label) {
+  std::unique_ptr<data::SimpleCSRSource> source(new data::SimpleCSRSource());
+  source->CopyFrom(batches, std::move(label));
+  return DMatrix::Create(std::move(source), "");
+}
+
 void DMatrix::SaveToLocalFile(const std::string& fname) {
   data::SimpleCSRSource source;
   source.CopyFrom(this);

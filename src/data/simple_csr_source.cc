@@ -2,6 +2,7 @@
  * Copyright 2015-2019 by Contributors
  * \file simple_csr_source.cc
  */
+#include <arrow/util/iterator.h>
 #include <dmlc/base.h>
 #include <xgboost/logging.h>
 #include <xgboost/json.h>
@@ -87,6 +88,60 @@ void SimpleCSRSource::CopyFrom(dmlc::Parser<uint32_t>* parser) {
   this->info.num_nonzero_ = static_cast<uint64_t>(page_.data.Size());
   // Either every row has query ID or none at all
   CHECK(qids.empty() || qids.size() == info.num_row_);
+}
+
+void SimpleCSRSource::CopyFrom(arrow::RecordBatchIterator& batches, std::string label) {
+  this->Clear();
+  for (auto result : batches) {
+    if (result.ok()) {
+      const std::shared_ptr<arrow::RecordBatch>& sp_batch = result.ValueOrDie();
+      // num_row_
+      int64_t batch_num_rows = sp_batch->num_rows();
+      info.num_row_ += batch_num_rows;
+      // num_col_
+      int batch_num_cols = sp_batch->num_columns();
+      CHECK(info.num_col_ == 0 || info.num_col_ == batch_num_cols - 1);
+      if (info.num_col_ == 0) {
+        // exclude the label column
+        info.num_col_ = batch_num_cols - 1;
+      }
+      // label
+      auto label_col = sp_batch->GetColumnByName(std::move(label));
+      auto label_data = label_col->data();
+      label_data->type = arrow::float32();
+      arrow::FloatArray label_arr{label_data}; 
+      auto& labels = info.labels_.HostVector();
+      labels.insert(labels.end(), 
+                    label_arr.raw_values(),
+                    label_arr.raw_values() + label_arr.length());
+      // data
+      auto& data_vec = page_.data.HostVector();
+      data_vec.reserve(page_.data.Size() + batch_num_rows * info.num_col_);
+      std::vector<std::unique_ptr<arrow::FloatArray>> cols;
+      for (int j = 0; j < batch_num_cols; ++j) {
+        if (sp_batch->column_name(j) != label) {
+          auto arr_data = sp_batch->column_data(j);
+          arr_data->type = arrow::float32();
+          cols.push_back(
+              std::unique_ptr<arrow::FloatArray>(new arrow::FloatArray{arr_data}));
+        }
+      }
+      for (int64_t i = 0; i < batch_num_rows; ++i) {
+        for (int j = 0; j < cols.size(); ++j) {
+          CHECK(cols[j]) << j << " invalid column ptr";
+          data_vec.emplace_back(j, cols[j]->Value(i));
+        }
+      }
+      // offset
+      size_t top = page_.offset.Size();
+      auto& offset_vec = page_.offset.HostVector();
+      for (int64_t i = 0; i < batch_num_rows; ++i) {
+        offset_vec.push_back(offset_vec[top - 1] + (i + 1) * info.num_col_);
+      }
+    }
+  }
+  // num_nonzero_
+  info.num_nonzero_ = static_cast<uint64_t>(page_.data.Size());
 }
 
 void SimpleCSRSource::LoadBinary(dmlc::Stream* fi) {
