@@ -35,6 +35,8 @@ class SparsePageDMatrix : public DMatrix {
 
   bool SingleColBlock() const override;
 
+  std::vector<Entry> GetColumn(size_t idx) const override { return {}; };
+
  private:
   BatchSet<SparsePage> GetRowBatches() override;
   BatchSet<CSCPage> GetColumnBatches() override;

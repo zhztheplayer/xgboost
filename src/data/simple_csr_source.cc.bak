@@ -14,6 +14,82 @@
 namespace xgboost {
 namespace data {
 
+struct ArrayCastWksp {
+  explicit ArrayCastWksp(std::shared_ptr<arrow::Array> array)
+    : array{array}, pos{0}, fval{0.0f} {}
+  std::shared_ptr<arrow::Array> array;
+  int64_t pos;
+  float fval;
+};
+
+#define VISIT_ARRAY_ITEM                                    \
+  do {                                                      \
+    ArrayCastWksp& item = wksp_[wksp_id];                   \
+    item.fval = static_cast<float>(array.Value(item.pos++));\
+    return arrow::Status::OK();                             \
+  } while (0)
+
+struct ArrowArrayCast : public arrow::ArrayVisitor {
+
+  explicit ArrowArrayCast(std::vector<ArrayCastWksp>& wksp) 
+    : wksp_{wksp}, wksp_id{0}  {}
+
+  arrow::Status Visit(const arrow::BooleanArray& array) override {
+    VISIT_ARRAY_ITEM;
+  }
+
+  arrow::Status Visit(const arrow::Int8Array& array) override {
+    VISIT_ARRAY_ITEM;
+  }
+
+  arrow::Status Visit(const arrow::Int16Array& array) override {
+    VISIT_ARRAY_ITEM;
+  }
+
+  arrow::Status Visit(const arrow::Int32Array& array) override {
+    VISIT_ARRAY_ITEM;
+  }
+
+  arrow::Status Visit(const arrow::Int64Array& array) override {
+    VISIT_ARRAY_ITEM;
+  }
+
+  arrow::Status Visit(const arrow::UInt8Array& array) override {
+    VISIT_ARRAY_ITEM;
+  }
+
+  arrow::Status Visit(const arrow::UInt16Array& array) override {
+    VISIT_ARRAY_ITEM;
+  }
+
+  arrow::Status Visit(const arrow::UInt32Array& array) override {
+    VISIT_ARRAY_ITEM;
+  }
+
+  arrow::Status Visit(const arrow::UInt64Array& array) override {
+    VISIT_ARRAY_ITEM;
+  }
+
+  arrow::Status Visit(const arrow::FloatArray& array) override {
+    VISIT_ARRAY_ITEM;
+  }
+
+  arrow::Status Visit(const arrow::DoubleArray& array) override {
+    VISIT_ARRAY_ITEM;
+  }
+
+  arrow::Status CastValue(int col, int64_t row, float& fval) {
+    wksp_id = col;
+    ARROW_RETURN_NOT_OK(wksp_[wksp_id].array->Accept(this));
+    fval = wksp_[wksp_id].fval;
+    return arrow::Status::OK();
+  }
+
+private:
+  std::vector<ArrayCastWksp>& wksp_;
+  int wksp_id;
+};
+
 void SimpleCSRSource::Clear() {
   page_.Clear();
   this->info.Clear();
@@ -90,82 +166,6 @@ void SimpleCSRSource::CopyFrom(dmlc::Parser<uint32_t>* parser) {
   CHECK(qids.empty() || qids.size() == info.num_row_);
 }
 
-void CastAndFill(std::shared_ptr<arrow::BooleanArray> array, std::vector<xgboost::Entry>& vec,
-    int64_t begin, unsigned int offset, int stride) {
-  for (int64_t i = 0; i < array->length(); ++i) {
-    vec[begin + i * stride + offset] =
-      xgboost::Entry{offset, static_cast<bst_float>(array->Value(i))};
-  }
-}
-    
-template <typename T,
-         typename std::enable_if<std::is_arithmetic<T>::value, int>::type = 0>
-void CastAndFill(std::shared_ptr<arrow::BooleanArray> array, std::vector<T>& vec,
-    int64_t begin, unsigned int offset, int stride) {
-  for (int64_t i = 0; i < array->length(); ++i) {
-    vec[begin + i * stride + offset] = static_cast<T>(array->Value(i));
-  }
-}
-
-template <typename ArrayType>
-void CastAndFill(std::shared_ptr<ArrayType> array, std::vector<xgboost::Entry>& vec,
-    int64_t begin, unsigned int offset, int stride) {
-  const auto* raw = array->raw_values();
-  for (int64_t i = 0; i < array->length(); ++i) {
-    vec[begin + i * stride + offset] = xgboost::Entry{offset, static_cast<bst_float>(raw[i])};
-  }
-}
-
-template <typename ArrayType, typename T,
-         typename std::enable_if<std::is_arithmetic<T>::value, int>::type = 0>
-void CastAndFill(std::shared_ptr<ArrayType> array, std::vector<T>& vec,
-    int64_t begin, unsigned int offset, int stride) {
-  const auto* raw = array->raw_values();
-  for (int64_t i = 0; i < array->length(); ++i) {
-    vec[begin + i * stride + offset] = static_cast<T>(raw[i]);
-  }
-}
-
-template <typename T>
-void CastArrowArray(std::shared_ptr<arrow::Array> array, std::vector<T>& vec,
-    int64_t begin, unsigned int offset, int stride) {
-  switch (array->type_id()) {
-    case arrow::Type::type::BOOL:
-      CastAndFill(std::static_pointer_cast<arrow::BooleanArray>(array), vec, begin, offset, stride);
-      break;
-    case arrow::Type::type::UINT8:
-      CastAndFill(std::static_pointer_cast<arrow::UInt8Array>(array), vec, begin, offset, stride);
-      break;
-    case arrow::Type::type::INT8:
-      CastAndFill(std::static_pointer_cast<arrow::Int8Array>(array), vec, begin, offset, stride);
-      break;
-    case arrow::Type::type::UINT16:
-      CastAndFill(std::static_pointer_cast<arrow::UInt16Array>(array), vec, begin, offset, stride);
-      break;
-    case arrow::Type::type::INT16:
-      CastAndFill(std::static_pointer_cast<arrow::Int16Array>(array), vec, begin, offset, stride);
-      break;
-    case arrow::Type::type::UINT32:
-      CastAndFill(std::static_pointer_cast<arrow::UInt32Array>(array), vec, begin, offset, stride);
-      break;
-    case arrow::Type::type::INT32:
-      CastAndFill(std::static_pointer_cast<arrow::Int32Array>(array), vec, begin, offset, stride);
-      break;
-    case arrow::Type::type::UINT64:
-      CastAndFill(std::static_pointer_cast<arrow::UInt64Array>(array), vec, begin, offset, stride);
-      break;
-    case arrow::Type::type::INT64:
-      CastAndFill(std::static_pointer_cast<arrow::Int64Array>(array), vec, begin, offset, stride);
-      break;
-    case arrow::Type::type::FLOAT:
-      CastAndFill(std::static_pointer_cast<arrow::FloatArray>(array), vec, begin, offset, stride);
-      break;
-    case arrow::Type::type::DOUBLE:
-      CastAndFill(std::static_pointer_cast<arrow::DoubleArray>(array), vec, begin, offset, stride);
-      break;
-  }
-}
-
 void SimpleCSRSource::CopyFrom(arrow::RecordBatchIterator& batches, std::string label) {
   this->Clear();
   for (auto result : batches) {
@@ -181,20 +181,34 @@ void SimpleCSRSource::CopyFrom(arrow::RecordBatchIterator& batches, std::string 
         // exclude the label column
         info.num_col_ = batch_num_cols - 1;
       }
+
+      std::vector<ArrayCastWksp> cols;
+      ArrowArrayCast cast(cols);
       // label
       auto label_col = sp_batch->GetColumnByName(std::move(label));
+      cols.emplace_back(label_col);
       auto& labels = info.labels_.HostVector();
-      int64_t begin = info.labels_.Size();
-      labels.resize(begin + batch_num_rows);
-      CastArrowArray(label_col, labels, begin, 0, 1);
+      for (int64_t i = 0; i < batch_num_rows; ++i) {
+        float fval;
+        cast.CastValue(0, i, fval);
+        labels.push_back(fval);
+      }
+      // weights. For now, we assuming 1.0 for all samples.
+      auto& weights = info.weights_.HostVector();
+      weights.insert(weights.end(), batch_num_rows, 1.0);
       // data
       auto& data_vec = page_.data.HostVector();
-      begin = page_.data.Size();
-      data_vec.resize(begin + batch_num_rows * info.num_col_);
-      unsigned int offset = 0;
+      data_vec.reserve(page_.data.Size() + batch_num_rows * info.num_col_);
       for (int j = 0; j < batch_num_cols; ++j) {
         if (sp_batch->column_name(j) != label) {
-          CastArrowArray(sp_batch->column(j), data_vec, begin, offset++, info.num_col_);
+          cols.emplace_back(sp_batch->column(j));
+        }
+      }
+      for (int64_t i = 0; i < batch_num_rows; ++i) {
+        for (int j = 1; j < cols.size(); ++j) {
+          float fval;
+          cast.CastValue(j, i, fval);
+          data_vec.emplace_back(j - 1, fval);
         }
       }
       // offset

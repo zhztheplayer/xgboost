@@ -37,6 +37,17 @@ class SimpleDMatrix : public DMatrix {
 
   bool SingleColBlock() const override;
 
+  std::vector<Entry> GetColumn(size_t idx) const override {
+    std::vector<Entry> ret;
+    auto page = dynamic_cast<SimpleCSRSource*>(source_.get())->page_;
+    const auto& data = page.data.HostVector();
+    int num_cols = Info().num_col_;
+    for (size_t i = 0; i < Info().num_row_; ++i) {
+      ret.push_back(data[i * num_cols + idx]);
+    }
+    return ret;
+  }
+
  private:
   BatchSet<SparsePage> GetRowBatches() override;
   BatchSet<CSCPage> GetColumnBatches() override;

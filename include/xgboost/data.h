@@ -7,6 +7,7 @@
 #ifndef XGBOOST_DATA_H_
 #define XGBOOST_DATA_H_
 
+#include <arrow/api.h>
 #include <dmlc/base.h>
 #include <dmlc/data.h>
 #include <rabit/rabit.h>
@@ -405,6 +406,39 @@ class DMatrix {
   virtual MetaInfo& Info() = 0;
   /*! \brief meta information of the dataset */
   virtual const MetaInfo& Info() const = 0;
+
+  virtual std::vector<Entry> GetColumn(size_t idx) const = 0;
+
+  void SummaryByCols() const {
+    if (!IsDense()) {
+      return;
+    }
+    const auto& v = Info().labels_.HostVector();
+    float min, max;
+    auto p = std::minmax_element(v.cbegin(), v.cend(), [](float a, float b) { return a < b; });
+    min = *(p.first);
+    max = *(p.second);
+    size_t cnt{0};
+    bst_float mean = std::accumulate(v.cbegin(), v.cend(), 0.0,
+        [&cnt](bst_float avg, bst_float cur) {
+          avg = (avg*cnt+cur)/(++cnt); return avg; });
+    std::cout << "dmatrix_dbg " << " labels: " << min << " " << max << " " << mean << "\n";
+    for (size_t i = 0; i < Info().num_col_; ++i) {
+      auto v = GetColumn(i);
+      Entry min, max;
+      auto p = std::minmax_element(v.cbegin(), v.cend(),
+          [](const Entry& a, const Entry& b) { return a.fvalue < b.fvalue; });
+      min = *(p.first);
+      max = *(p.second);
+      size_t cnt{0};
+      bst_float mean = std::accumulate(v.cbegin(), v.cend(), 0.0,
+          [&cnt](bst_float avg, Entry cur) {
+            avg = (avg*cnt+cur.fvalue)/(++cnt); return avg; });
+      std::cout << "dmatrix_dbg " << i << " " << min.index << ":" << min.fvalue << " "
+                << max.index << ":" << max.fvalue  << " " << mean << "\n";
+    }
+  }
+
   /**
    * \brief Gets batches. Use range based for loop over BatchSet to access individual batches.
    */
@@ -474,6 +508,8 @@ class DMatrix {
                          size_t page_size = kPageSize);
 
   static DMatrix* CreateOrMerge(dmlc::Parser<uint32_t>* parser);
+
+  static DMatrix* Create(arrow::RecordBatchIterator& batches, std::string label);
 
   /*! \brief page size 32 MB */
   static const size_t kPageSize = 32UL << 20UL;

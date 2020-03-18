@@ -8,6 +8,7 @@
 #ifndef XGBOOST_DATA_SIMPLE_CSR_SOURCE_H_
 #define XGBOOST_DATA_SIMPLE_CSR_SOURCE_H_
 
+#include <arrow/api.h>
 #include <xgboost/base.h>
 #include <xgboost/data.h>
 
@@ -51,6 +52,9 @@ class SimpleCSRSource : public DataSource<SparsePage> {
    * \param info The additional information reflected in the parser.
    */
   void CopyFrom(dmlc::Parser<uint32_t>* src);
+
+  void CopyFrom(arrow::RecordBatchIterator& batches, std::string label);
+
   /*!
    * \brief copy content of data from foreign **GPU** columnar buffer.
    * \param interfaces_str JSON representation of cuda array interfaces.

@@ -21,6 +21,12 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include <arrow/api.h>
+#include <arrow/io/api.h>
+#include <arrow/util/iterator.h>
+#include <parquet/arrow/reader.h>
+#include <parquet/arrow/writer.h>
+#include <parquet/exception.h>
 #include "./common/common.h"
 #include "./common/config.h"
 
@@ -53,6 +59,8 @@ struct CLIParam : public XGBoostParameter<CLIParam> {
   std::string model_dir;
   /*! \brief name of predict file */
   std::string name_pred;
+  /*! \brief label */
+  std::string label;
   /*! \brief data split mode */
   int dsplit;
   /*!\brief limit number of trees in prediction */
@@ -100,6 +108,8 @@ struct CLIParam : public XGBoostParameter<CLIParam> {
         .describe("Output directory of period checkpoint.");
     DMLC_DECLARE_FIELD(name_pred).set_default("pred.txt")
         .describe("Name of the prediction file.");
+    DMLC_DECLARE_FIELD(label).set_default("NULL")
+        .describe("Name of the label column.");
     DMLC_DECLARE_FIELD(dsplit).set_default(0)
         .add_enum("auto", 0)
         .add_enum("col", 1)
@@ -157,12 +167,47 @@ void CLITrain(const CLIParam& param) {
     std::string pname = rabit::GetProcessorName();
     LOG(CONSOLE) << "start " << pname << ":" << rabit::GetRank();
   }
+  /*
   // load in data.
   std::shared_ptr<DMatrix> dtrain(
       DMatrix::Load(
           param.train_path,
           ConsoleLogger::GlobalVerbosity() > ConsoleLogger::DefaultVerbosity(),
           param.dsplit == 2));
+  */
+
+  //constexpr int64_t CHUNK_SIZE = 32 << 12;
+  std::shared_ptr<arrow::io::ReadableFile> infile;
+  PARQUET_ASSIGN_OR_THROW(
+      infile,
+      arrow::io::ReadableFile::Open(param.train_path,
+                                    arrow::default_memory_pool()));
+  std::unique_ptr<parquet::arrow::FileReader> reader;
+  PARQUET_THROW_NOT_OK(
+      parquet::arrow::OpenFile(infile, arrow::default_memory_pool(), &reader));
+  std::shared_ptr<arrow::Table> table;
+  PARQUET_THROW_NOT_OK(reader->ReadTable(&table));
+  std::shared_ptr<arrow::TableBatchReader> batchreader =
+    std::make_shared<arrow::TableBatchReader>(*table);
+  //batchreader->set_chunksize(CHUNK_SIZE);
+
+  struct FuncIterator {
+    explicit FuncIterator(std::shared_ptr<arrow::TableBatchReader> tbreader)
+      : tbreader_{std::move(tbreader)} {}
+
+    arrow::Result<std::shared_ptr<arrow::RecordBatch>> Next() {
+      std::shared_ptr<arrow::RecordBatch> batch;
+      ARROW_RETURN_NOT_OK(tbreader_->ReadNext(&batch));
+      return batch;
+    }
+
+    std::shared_ptr<arrow::TableBatchReader> tbreader_;
+  };
+
+  arrow::RecordBatchIterator batchit(FuncIterator(std::move(batchreader)));
+  std::shared_ptr<DMatrix> dtrain(
+      DMatrix::Create(batchit, param.label));
+
   std::vector<std::shared_ptr<DMatrix> > deval;
   std::vector<std::shared_ptr<DMatrix> > cache_mats;
   std::vector<DMatrix*> eval_datasets;
