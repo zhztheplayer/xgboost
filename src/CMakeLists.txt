@@ -41,6 +41,8 @@ else (USE_CUDA)
   add_library(objxgboost OBJECT ${CPU_SOURCES} ${PLUGINS_SOURCES})
 endif (USE_CUDA)
 
+target_include_directories(objxgboost PRIVATE ${ARROW_INCLUDE_DIR} ${PARQUET_INCLUDE_DIR})
+
 target_include_directories(objxgboost
   PRIVATE
   ${xgboost_SOURCE_DIR}/include

@@ -311,7 +311,7 @@ DMatrix* DMatrix::Create(dmlc::Parser<uint32_t>* parser,
 }
 
 DMatrix* DMatrix::CreateOrMerge(dmlc::Parser<uint32_t>* parser) {
-  data::BatchedDMatrix* batched = data::BatchedDMatrix::getBatchedDMatrix();
+  data::BatchedDMatrix *batched = data::BatchedDMatrix::getBatchedDMatrix();
   std::unique_ptr<data::SimpleCSRSource> source(new data::SimpleCSRSource());
   source->CopyFrom(parser);
   if (batched->AddBatch(std::move(source))) {
@@ -320,6 +320,7 @@ DMatrix* DMatrix::CreateOrMerge(dmlc::Parser<uint32_t>* parser) {
     std::unique_ptr<data::SimpleCSRSource> mpt(new data::SimpleCSRSource());
     return new data::SimpleDMatrix(std::move(mpt));
   }
+}
 
 DMatrix* DMatrix::Create(arrow::RecordBatchIterator& batches, std::string label) {
   std::unique_ptr<data::SimpleCSRSource> source(new data::SimpleCSRSource());

@@ -79,6 +79,7 @@ class BatchedDMatrix : public DMatrix {
 
   // for testing
   size_t GetNumRows();
+  std::vector<Entry> GetColumn(size_t idx) const override;
 
  private:
   BatchSet<SparsePage> GetRowBatches() override;

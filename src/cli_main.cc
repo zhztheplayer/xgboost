@@ -178,10 +178,9 @@ void CLITrain(const CLIParam& param) {
 
   //constexpr int64_t CHUNK_SIZE = 32 << 12;
   std::shared_ptr<arrow::io::ReadableFile> infile;
-  PARQUET_ASSIGN_OR_THROW(
-      infile,
+  PARQUET_THROW_NOT_OK(
       arrow::io::ReadableFile::Open(param.train_path,
-                                    arrow::default_memory_pool()));
+                                    arrow::default_memory_pool(), &infile));
   std::unique_ptr<parquet::arrow::FileReader> reader;
   PARQUET_THROW_NOT_OK(
       parquet::arrow::OpenFile(infile, arrow::default_memory_pool(), &reader));
@@ -195,10 +194,11 @@ void CLITrain(const CLIParam& param) {
     explicit FuncIterator(std::shared_ptr<arrow::TableBatchReader> tbreader)
       : tbreader_{std::move(tbreader)} {}
 
-    arrow::Result<std::shared_ptr<arrow::RecordBatch>> Next() {
+    arrow::Status Next(std::shared_ptr<arrow::RecordBatch>* out) {
       std::shared_ptr<arrow::RecordBatch> batch;
       ARROW_RETURN_NOT_OK(tbreader_->ReadNext(&batch));
-      return batch;
+      *out = batch;
+      return arrow::Status::OK();
     }
 
     std::shared_ptr<arrow::TableBatchReader> tbreader_;

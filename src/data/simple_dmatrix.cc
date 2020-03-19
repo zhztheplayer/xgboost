@@ -88,6 +88,10 @@ BatchedDMatrix* BatchedDMatrix::getBatchedDMatrix() {
   return newMat_;
 }
 
+std::vector<Entry> BatchedDMatrix::GetColumn(size_t idx) const {
+  return {};
+}
+
 MetaInfo& BatchedDMatrix::Info() { 
   return *info_;
 }

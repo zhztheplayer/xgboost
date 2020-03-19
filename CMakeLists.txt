@@ -126,8 +126,8 @@ add_library(xgboost SHARED ${XGBOOST_OBJ_SOURCES})
 target_include_directories(xgboost
   INTERFACE
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include>
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
-  ${ARROW_INCLUDE_DIR} ${PARQUET_INCLUDE_DIR})
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>)
+
 target_link_libraries(xgboost PRIVATE ${LINKED_LIBRARIES_PRIVATE})
 
 # This creates its own shared library `xgboost4j'.
@@ -148,7 +148,10 @@ target_include_directories(runxgboost
   PRIVATE
   ${xgboost_SOURCE_DIR}/include
   ${xgboost_SOURCE_DIR}/dmlc-core/include
-  ${xgboost_SOURCE_DIR}/rabit/include)
+  ${xgboost_SOURCE_DIR}/rabit/include
+  ${ARROW_INCLUDE_DIR}
+  ${PARQUET_INCLUDE_DIR})
+
 target_link_libraries(runxgboost PRIVATE ${LINKED_LIBRARIES_PRIVATE})
 set_target_properties(
   runxgboost PROPERTIES
