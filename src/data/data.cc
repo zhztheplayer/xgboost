@@ -328,6 +328,14 @@ DMatrix* DMatrix::Create(arrow::RecordBatchIterator& batches, std::string label)
   return DMatrix::Create(std::move(source), "");
 }
 
+DMatrix* DMatrix::Append(arrow::RecordBatchIterator& batches, std::string label) {
+  std::unique_ptr<data::SimpleCSRSource> source(new data::SimpleCSRSource());
+  source->CopyFrom(batches, std::move(label));
+  data::BatchedDMatrix *batched = data::BatchedDMatrix::getBatchedDMatrix();
+  batched->AddBatch(std::move(source));
+  return batched;
+}
+
 void DMatrix::SaveToLocalFile(const std::string& fname) {
   data::SimpleCSRSource source;
   source.CopyFrom(this);

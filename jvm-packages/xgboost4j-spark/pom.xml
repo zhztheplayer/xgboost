@@ -44,5 +44,11 @@
             <version>${spark.version}</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+          <groupId>org.apache.arrow</groupId>
+          <artifactId>arrow-vector</artifactId>
+          <version>${arrow.version}</version>
+          <scope>provided</scope>
+        </dependency>
     </dependencies>
 </project>

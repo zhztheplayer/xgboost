@@ -17,6 +17,7 @@ package ml.dmlc.xgboost4j.java;
 
 import java.nio.ByteBuffer;
 
+import ml.dmlc.xgboost4j.java.arrow.NativeRecordBatchHandle;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -50,6 +51,9 @@ class XGBoostJNI {
   }
 
   public final static native String XGBGetLastError();
+
+  final static native int XGDMatrixCreateByMergingRecordBatchIters(java.util.Iterator<NativeRecordBatchHandle> iter,
+                                                                   long[] out);
 
   final static native int XGDMatrixCreateByMergingDataIters(java.util.Iterator<DataBatch> iter,
                                                              long[] out);
