@@ -55,7 +55,7 @@ class XGBoostJNI {
   final static native int XGDMatrixCreateByMergingRecordBatchIters(java.util.Iterator<NativeRecordBatchHandle> iter,
                                                                    long[] out);
 
-  final static native int XGDMatrixCreateByMergingDataIters(java.util.Iterator<DataBatch> iter,
+  final static native int XGDMatrixCreateByMergingDataIters(String label, java.util.Iterator<DataBatch> iter,
                                                              long[] out);
 
   public final static native int XGDMatrixCreateFromFile(String fname, int silent, long[] out);

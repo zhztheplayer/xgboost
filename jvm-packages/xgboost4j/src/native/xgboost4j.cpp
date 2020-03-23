@@ -22,6 +22,7 @@
 #include <vector>
 #include <string>
 #include <xgboost/data.h>
+#include "arrow/util/iterator.h"
 
 // helper functions
 // set handle
@@ -164,6 +165,25 @@ JNIEXPORT jstring JNICALL Java_ml_dmlc_xgboost4j_java_XGBoostJNI_XGBGetLastError
   return jresult;
 }
 
+class JRecordBatchReader : public arrow::RecordBatchReader {
+ public:
+  JRecordBatchReader(JNIEnv *jenv, jobject &jiter, std::string label_name) : jenv(jenv), jiter(jiter),
+                                                                             label_name(label_name) {}
+
+  std::shared_ptr<arrow::Schema> schema() const override {
+    return std::shared_ptr<arrow::Schema>();
+  }
+
+  arrow::Status ReadNext(std::shared_ptr<arrow::RecordBatch> *batch) override {
+    return arrow::Status();
+  }
+
+ private:
+  JNIEnv *jenv;
+  jobject jiter;
+  std::string label_name;
+};
+
 /*
  * Class:     ml_dmlc_xgboost4j_java_XGBoostJNI
  * Method:    XGDMatrixCreateByMergingRecordBatchIters
@@ -172,9 +192,13 @@ JNIEXPORT jstring JNICALL Java_ml_dmlc_xgboost4j_java_XGBoostJNI_XGBGetLastError
 JNIEXPORT jint JNICALL Java_ml_dmlc_xgboost4j_java_XGBoostJNI_XGDMatrixCreateByMergingRecordBatchIters
     (JNIEnv *jenv, jclass jcls, jobject jiter, jlongArray jout) {
   DMatrixHandle result;
-  // todo
+  std::string label_name = "label";
+  std::unique_ptr<arrow::RecordBatchReader> jr;
+  jr.reset(new JRecordBatchReader(jenv, jiter, label_name));
+  arrow::RecordBatchIterator itr = arrow::MakePointerIterator(std::move(jr));
+  result = new std::shared_ptr<xgboost::DMatrix>(xgboost::DMatrix::CreateOrMerge(itr, label_name));
   setHandle(jenv, jout, result);
-  return ret;
+  return 0;
 }
 
 /*
