@@ -168,13 +168,54 @@ JNIEXPORT jstring JNICALL Java_ml_dmlc_xgboost4j_java_XGBoostJNI_XGBGetLastError
 class JRecordBatchReader : public arrow::RecordBatchReader {
  public:
   JRecordBatchReader(JNIEnv *jenv, jobject &jiter, std::string label_name) : jenv(jenv), jiter(jiter),
-                                                                             label_name(label_name) {}
+                                                                             label_name(label_name) {
+
+  }
 
   std::shared_ptr<arrow::Schema> schema() const override {
     return std::shared_ptr<arrow::Schema>();
   }
 
   arrow::Status ReadNext(std::shared_ptr<arrow::RecordBatch> *batch) override {
+
+    // iterator flags
+    jclass iter_class = jenv->FindClass("java/util/Iterator");
+    jmethodID has_next = jenv->GetMethodID(iter_class,
+                                           "hasNext", "()Z");
+    jmethodID next = jenv->GetMethodID(iter_class,
+                                       "next", "()Ljava/lang/Object;");
+
+    // jhandle flags
+    jclass record_batch_handle_class
+        = jenv->FindClass("Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle;");
+    jclass record_batch_handle_field_class
+        = jenv->FindClass("Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Field;");
+    jclass record_batch_handle_buffer_class
+        = jenv->FindClass("Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Buffer;");
+    jmethodID record_batch_handle_get_num_rows = jenv->GetMethodID(record_batch_handle_class,
+        "getNumRows", "()J");
+    jmethodID record_batch_handle_get_fields = jenv->GetMethodID(record_batch_handle_class,
+        "getFields", "()[Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Field;");
+    jmethodID record_batch_handle_get_buffers = jenv->GetMethodID(record_batch_handle_class,
+        "getBuffers", "()[Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Buffer;");
+    jmethodID record_batch_handle_field_get_length = jenv->GetMethodID(record_batch_handle_field_class,
+        "getLength", "()J");
+    jmethodID record_batch_handle_field_get_null_count = jenv->GetMethodID(record_batch_handle_field_class,
+        "getNullCount", "()J");
+    jmethodID record_batch_handle_buffer_get_memory_address = jenv->GetMethodID(record_batch_handle_buffer_class,
+        "getMemoryAddress", "()J");
+    jmethodID record_batch_handle_buffer_get_size = jenv->GetMethodID(record_batch_handle_buffer_class,
+        "getSize", "()J");
+    jmethodID record_batch_handle_buffer_get_capacity = jenv->GetMethodID(record_batch_handle_buffer_class,
+        "getCapacity", "()J");
+
+
+    // todo
+
+    jenv->DeleteLocalRef(iter_class);
+    jenv->DeleteLocalRef(record_batch_handle_class);
+    jenv->DeleteLocalRef(record_batch_handle_field_class);
+    jenv->DeleteLocalRef(record_batch_handle_buffer_class);
     return arrow::Status();
   }
 

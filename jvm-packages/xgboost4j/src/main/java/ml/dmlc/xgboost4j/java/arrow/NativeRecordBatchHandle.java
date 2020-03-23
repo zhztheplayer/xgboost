@@ -28,8 +28,8 @@ import java.util.List;
 public class NativeRecordBatchHandle {
 
   private final long numRows;
-  private final List<Field> fields;
-  private final List<Buffer> buffers;
+  private final Field[] fields;
+  private final Buffer[] buffers;
 
   /**
    * Constructor.
@@ -40,8 +40,8 @@ public class NativeRecordBatchHandle {
    */
   public NativeRecordBatchHandle(long numRows, Field[] fields, Buffer[] buffers) {
     this.numRows = numRows;
-    this.fields = Arrays.asList(fields);
-    this.buffers = Arrays.asList(buffers);
+    this.fields = fields;
+    this.buffers = buffers;
   }
 
   /**
@@ -54,14 +54,14 @@ public class NativeRecordBatchHandle {
   /**
    * @return Metadata of fields.
    */
-  public List<Field> getFields() {
+  public Field[] getFields() {
     return fields;
   }
 
   /**
    * @return Retained Arrow buffers.
    */
-  public List<Buffer> getBuffers() {
+  public Buffer[] getBuffers() {
     return buffers;
   }
 
@@ -69,12 +69,20 @@ public class NativeRecordBatchHandle {
    * Field metadata.
    */
   public static class Field {
-    public final long length;
-    public final long nullCount;
+    private final long length;
+    private final long nullCount;
 
     public Field(long length, long nullCount) {
       this.length = length;
       this.nullCount = nullCount;
+    }
+
+    public long getLength() {
+      return length;
+    }
+
+    public long getNullCount() {
+      return nullCount;
     }
   }
 
@@ -82,24 +90,33 @@ public class NativeRecordBatchHandle {
    * Pointers and metadata of the targeted Arrow buffer.
    */
   public static class Buffer {
-    public final long nativeInstanceId;
-    public final long memoryAddress;
-    public final long size;
-    public final long capacity;
+    private final long memoryAddress;
+    private final long size;
+    private final long capacity;
 
     /**
      * Constructor.
      *
-     * @param nativeInstanceId Native instance's id
      * @param memoryAddress Memory address of the first byte
      * @param size Size (in bytes)
      * @param capacity Capacity (in bytes)
      */
-    public Buffer(long nativeInstanceId, long memoryAddress, long size, long capacity) {
-      this.nativeInstanceId = nativeInstanceId;
+    public Buffer(long memoryAddress, long size, long capacity) {
       this.memoryAddress = memoryAddress;
       this.size = size;
       this.capacity = capacity;
+    }
+
+    public long getMemoryAddress() {
+      return memoryAddress;
+    }
+
+    public long getSize() {
+      return size;
+    }
+
+    public long getCapacity() {
+      return capacity;
     }
   }
 }
