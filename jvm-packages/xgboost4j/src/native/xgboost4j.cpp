@@ -21,6 +21,7 @@
 #include <cstring>
 #include <vector>
 #include <string>
+#include <xgboost/data.h>
 
 // helper functions
 // set handle
@@ -161,6 +162,19 @@ JNIEXPORT jstring JNICALL Java_ml_dmlc_xgboost4j_java_XGBoostJNI_XGBGetLastError
     jresult = jenv->NewStringUTF(result);
   }
   return jresult;
+}
+
+/*
+ * Class:     ml_dmlc_xgboost4j_java_XGBoostJNI
+ * Method:    XGDMatrixCreateByMergingRecordBatchIters
+ * Signature: (Ljava/util/Iterator;[J)I
+ */
+JNIEXPORT jint JNICALL Java_ml_dmlc_xgboost4j_java_XGBoostJNI_XGDMatrixCreateByMergingRecordBatchIters
+    (JNIEnv *jenv, jclass jcls, jobject jiter, jlongArray jout) {
+  DMatrixHandle result;
+  // todo
+  setHandle(jenv, jout, result);
+  return ret;
 }
 
 /*

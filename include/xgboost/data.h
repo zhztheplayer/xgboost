@@ -511,7 +511,7 @@ class DMatrix {
 
   static DMatrix* Create(arrow::RecordBatchIterator& batches, std::string label);
 
-  static DMatrix* Append(arrow::RecordBatchIterator &batches, std::string label);
+  static DMatrix* CreateOrMerge(arrow::RecordBatchIterator &batches, std::string label);
 
   /*! \brief page size 32 MB */
   static const size_t kPageSize = 32UL << 20UL;
