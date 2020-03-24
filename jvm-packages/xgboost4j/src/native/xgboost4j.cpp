@@ -19,6 +19,7 @@
 #include <xgboost/logging.h>
 #include "./xgboost4j.h"
 #include <cstring>
+#include <utility>
 #include <vector>
 #include <string>
 #include <xgboost/data.h>
@@ -167,62 +168,96 @@ JNIEXPORT jstring JNICALL Java_ml_dmlc_xgboost4j_java_XGBoostJNI_XGBGetLastError
 
 class JRecordBatchReader : public arrow::RecordBatchReader {
  public:
-  JRecordBatchReader(JNIEnv *jenv, jobject &jiter, std::string label_name) : jenv(jenv), jiter(jiter),
-                                                                             label_name(label_name) {
-
+  JRecordBatchReader(JNIEnv *jenv, jobject &jiter, std::string label_name, jint width) : jenv_(jenv), jiter_(jiter),
+                                                                             label_name_(std::move(label_name)),
+                                                                             width_(width) {
+    std::vector<std::shared_ptr<arrow::Field>> fields;
+    fields.push_back(std::make_shared<arrow::Field>(label_name, arrow::float32()));
+    for (int i = 0; i < width; i++) {
+      fields.push_back(std::make_shared<arrow::Field>("v" + std::to_string(i), arrow::float32()));
+    }
+    schema_ = std::make_shared<arrow::Schema>(fields);
   }
 
   std::shared_ptr<arrow::Schema> schema() const override {
-    return std::shared_ptr<arrow::Schema>();
+    return schema_;
   }
 
-  arrow::Status ReadNext(std::shared_ptr<arrow::RecordBatch> *batch) override {
+  arrow::Status ReadNext(std::shared_ptr<arrow::RecordBatch> *out) override {
 
     // iterator flags
-    jclass iter_class = jenv->FindClass("java/util/Iterator");
-    jmethodID has_next = jenv->GetMethodID(iter_class,
-                                           "hasNext", "()Z");
-    jmethodID next = jenv->GetMethodID(iter_class,
-                                       "next", "()Ljava/lang/Object;");
+    jclass iter_class = jenv_->FindClass("java/util/Iterator");
+    jmethodID has_next = jenv_->GetMethodID(iter_class,
+                                            "hasNext", "()Z");
+    jmethodID next = jenv_->GetMethodID(iter_class,
+                                        "next", "()Ljava/lang/Object;");
 
     // jhandle flags
     jclass record_batch_handle_class
-        = jenv->FindClass("Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle;");
+      = jenv_->FindClass("Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle;");
     jclass record_batch_handle_field_class
-        = jenv->FindClass("Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Field;");
+      = jenv_->FindClass("Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Field;");
     jclass record_batch_handle_buffer_class
-        = jenv->FindClass("Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Buffer;");
-    jmethodID record_batch_handle_get_num_rows = jenv->GetMethodID(record_batch_handle_class,
-        "getNumRows", "()J");
-    jmethodID record_batch_handle_get_fields = jenv->GetMethodID(record_batch_handle_class,
-        "getFields", "()[Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Field;");
-    jmethodID record_batch_handle_get_buffers = jenv->GetMethodID(record_batch_handle_class,
-        "getBuffers", "()[Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Buffer;");
-    jmethodID record_batch_handle_field_get_length = jenv->GetMethodID(record_batch_handle_field_class,
-        "getLength", "()J");
-    jmethodID record_batch_handle_field_get_null_count = jenv->GetMethodID(record_batch_handle_field_class,
-        "getNullCount", "()J");
-    jmethodID record_batch_handle_buffer_get_memory_address = jenv->GetMethodID(record_batch_handle_buffer_class,
-        "getMemoryAddress", "()J");
-    jmethodID record_batch_handle_buffer_get_size = jenv->GetMethodID(record_batch_handle_buffer_class,
-        "getSize", "()J");
-    jmethodID record_batch_handle_buffer_get_capacity = jenv->GetMethodID(record_batch_handle_buffer_class,
-        "getCapacity", "()J");
+      = jenv_->FindClass("Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Buffer;");
+    jmethodID record_batch_handle_get_num_rows = jenv_->GetMethodID(record_batch_handle_class,
+                                                                    "getNumRows", "()J");
+    jmethodID record_batch_handle_get_fields = jenv_->GetMethodID(record_batch_handle_class,
+                                                                  "getFields", "()[Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Field;");
+    jmethodID record_batch_handle_get_buffers = jenv_->GetMethodID(record_batch_handle_class,
+                                                                   "getBuffers", "()[Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Buffer;");
+    jmethodID record_batch_handle_field_get_length = jenv_->GetMethodID(record_batch_handle_field_class,
+                                                                        "getLength", "()J");
+    jmethodID record_batch_handle_field_get_null_count = jenv_->GetMethodID(record_batch_handle_field_class,
+                                                                            "getNullCount", "()J");
+    jmethodID record_batch_handle_buffer_get_memory_address = jenv_->GetMethodID(record_batch_handle_buffer_class,
+                                                                                 "getMemoryAddress", "()J");
+    jmethodID record_batch_handle_buffer_get_size = jenv_->GetMethodID(record_batch_handle_buffer_class,
+                                                                       "getSize", "()J");
+    jmethodID record_batch_handle_buffer_get_capacity = jenv_->GetMethodID(record_batch_handle_buffer_class,
+                                                                           "getCapacity", "()J");
 
+    if (jenv_->CallBooleanMethod(jiter_, has_next)) {
+      jobject batch = jenv_->CallObjectMethod(jiter_, next); // todo null check
+      jlong num_rows = jenv_->CallLongMethod(batch, record_batch_handle_get_num_rows);
+      jobjectArray fields = (jobjectArray) jenv_->CallObjectMethod(batch, record_batch_handle_get_fields);
+      jobjectArray buffers = (jobjectArray) jenv_->CallObjectMethod(batch, record_batch_handle_get_buffers);
+      jsize width = jenv_->GetArrayLength(fields);
+      // todo assert length == schema.length
+      std::vector<std::shared_ptr<arrow::ArrayData>> columns;
+      int buffer_index = 0;
+      for (int i = 0; i < width; i++) {
+        jobject field = jenv_->GetObjectArrayElement(fields, i);
+        jobject buffer = jenv_->GetObjectArrayElement(buffers, i);
+        jlong length = jenv_->CallLongMethod(field, record_batch_handle_field_get_length);
+        jlong null_count = jenv_->CallLongMethod(field, record_batch_handle_field_get_null_count);
+        std::vector<std::shared_ptr<arrow::Buffer>> data;
+        for (int j = 0; j < length; j++) {
+          jobject jbuffer = jenv_->GetObjectArrayElement(buffers, buffer_index);
+          jlong memory_address = jenv_->CallLongMethod(field, record_batch_handle_buffer_get_memory_address);
+          jlong size = jenv_->CallLongMethod(field, record_batch_handle_buffer_get_size);
+          jlong capacity = jenv_->CallLongMethod(field, record_batch_handle_buffer_get_capacity);
+          data.push_back(std::make_shared<arrow::Buffer>(reinterpret_cast<uint8_t *>(memory_address), size));
+        }
+        columns.push_back(arrow::ArrayData::Make(arrow::float32(), length, data));
+        *out = arrow::RecordBatch::Make(schema_, num_rows, columns);
+      }
+    } else {
+      *out = nullptr;
+    }
 
-    // todo
-
-    jenv->DeleteLocalRef(iter_class);
-    jenv->DeleteLocalRef(record_batch_handle_class);
-    jenv->DeleteLocalRef(record_batch_handle_field_class);
-    jenv->DeleteLocalRef(record_batch_handle_buffer_class);
-    return arrow::Status();
+    jenv_->DeleteLocalRef(iter_class);
+    jenv_->DeleteLocalRef(record_batch_handle_class);
+    jenv_->DeleteLocalRef(record_batch_handle_field_class);
+    jenv_->DeleteLocalRef(record_batch_handle_buffer_class);
+    return arrow::Status::OK();
   }
 
  private:
-  JNIEnv *jenv;
-  jobject jiter;
-  std::string label_name;
+  JNIEnv *jenv_;
+  jobject jiter_;
+  std::string label_name_;
+  std::shared_ptr<arrow::Schema> schema_;
+  jint width_;
 };
 
 /*
@@ -235,7 +270,7 @@ JNIEXPORT jint JNICALL Java_ml_dmlc_xgboost4j_java_XGBoostJNI_XGDMatrixCreateByM
   DMatrixHandle result;
   std::string label_name = "label";
   std::unique_ptr<arrow::RecordBatchReader> jr;
-  jr.reset(new JRecordBatchReader(jenv, jiter, label_name));
+  jr.reset(new JRecordBatchReader(jenv, jiter, label_name, 10)); // fixme width
   arrow::RecordBatchIterator itr = arrow::MakePointerIterator(std::move(jr));
   result = new std::shared_ptr<xgboost::DMatrix>(xgboost::DMatrix::CreateOrMerge(itr, label_name));
   setHandle(jenv, jout, result);
