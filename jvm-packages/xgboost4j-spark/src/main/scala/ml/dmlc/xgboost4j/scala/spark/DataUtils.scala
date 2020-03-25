@@ -17,7 +17,9 @@
 package ml.dmlc.xgboost4j.scala.spark
 
 import ml.dmlc.xgboost4j.java.arrow.ArrowRecordBatchHandle
+import ml.dmlc.xgboost4j.java.util.UtilReflection
 import ml.dmlc.xgboost4j.{LabeledPoint => XGBLabeledPoint}
+import org.apache.arrow.vector.ValueVector
 import org.apache.spark.HashPartitioner
 import org.apache.spark.ml.feature.{LabeledPoint => MLLabeledPoint}
 import org.apache.spark.ml.linalg.{DenseVector, SparseVector, Vector, Vectors}
@@ -26,6 +28,9 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Column, DataFrame, Row}
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.types.{FloatType, IntegerType}
+import org.apache.spark.sql.vectorized.{ArrowColumnVector, ColumnarBatch}
+
+import scala.collection.mutable.ListBuffer
 
 object DataUtils extends Serializable {
   private[spark] implicit class XGBLabeledPointFeatures(
@@ -182,15 +187,36 @@ object DataUtils extends Serializable {
 
   private[spark] def convertDataFrameToArrowRecordBatchRDDs(
     labelCol: Column,
-    featuresCol: Column,
-    weight: Column,
-    baseMargin: Column,
-    group: Option[Column],
     numWorkers: Int,
     deterministicPartition: Boolean,
     dataFrames: DataFrame*): Array[RDD[ArrowRecordBatchHandle]] = {
-    // todo
-    Array()
+
+    val arrayOfRDDs = dataFrames.toArray.map {
+      df => {
+        val rdd: RDD[ColumnarBatch] = df.rdd.asInstanceOf[RDD[ColumnarBatch]] // fixme conversion
+        rdd.map {
+          batch => {
+            val fields = ListBuffer[ArrowRecordBatchHandle.Field]()
+            val buffers = ListBuffer[ArrowRecordBatchHandle.Buffer]()
+            for (i <- 0 until batch.numRows()) {
+              val vector = batch.column(i).asInstanceOf[ArrowColumnVector]
+              val accessor = UtilReflection.getField(vector, "accessor")
+              val valueVector = UtilReflection.getField(accessor, "vector")
+                .asInstanceOf[ValueVector]
+              val bufs = valueVector.getBuffers(false);
+              fields.append(new ArrowRecordBatchHandle.Field(bufs.length, valueVector.getNullCount))
+              for (buf <- bufs) {
+                buffers.append(new ArrowRecordBatchHandle.Buffer(buf.memoryAddress(),
+                  buf.getReferenceManager.getSize, buf.getReferenceManager.getSize))
+              }
+            }
+            new ArrowRecordBatchHandle(batch.numRows(), fields.toArray, buffers.toArray)
+          }
+        }
+      }
+    }
+    // todo test
+    repartitionRDDs(deterministicPartition, numWorkers, arrayOfRDDs)
   }
 
 }

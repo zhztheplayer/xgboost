@@ -179,8 +179,7 @@ class XGBoostClassifier (
     val (_booster, _metrics) = if (xgboostParams("arrowInput") == true) {
       val trainingSet: RDD[ArrowRecordBatchHandle] = DataUtils
         .convertDataFrameToArrowRecordBatchRDDs(
-          col($(labelCol)), col($(featuresCol)), weight, baseMargin,
-          None, $(numWorkers), needDeterministicRepartitioning,
+          col($(labelCol)), $(numWorkers), needDeterministicRepartitioning,
           dataset.asInstanceOf[DataFrame]).head
       transformSchema(dataset.schema, logging = true)
       val derivedXGBParamMap = MLlib2XGBoostParams
