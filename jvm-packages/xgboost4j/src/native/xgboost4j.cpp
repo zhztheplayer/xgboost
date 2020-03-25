@@ -263,14 +263,14 @@ class JRecordBatchReader : public arrow::RecordBatchReader {
 /*
  * Class:     ml_dmlc_xgboost4j_java_XGBoostJNI
  * Method:    XGDMatrixCreateByMergingRecordBatchIters
- * Signature: (Ljava/util/Iterator;[J)I
+ * Signature: (ILjava/util/Iterator;[J)I
  */
 JNIEXPORT jint JNICALL Java_ml_dmlc_xgboost4j_java_XGBoostJNI_XGDMatrixCreateByMergingRecordBatchIters
-    (JNIEnv *jenv, jclass jcls, jobject jiter, jlongArray jout) {
+    (JNIEnv *jenv, jclass jcls, jint width, jobject jiter, jlongArray jout) {
   DMatrixHandle result;
   std::string label_name = "label";
   std::unique_ptr<arrow::RecordBatchReader> jr;
-  jr.reset(new JRecordBatchReader(jenv, jiter, label_name, 10)); // fixme width
+  jr.reset(new JRecordBatchReader(jenv, jiter, label_name, width)); // fixme width
   arrow::RecordBatchIterator itr = arrow::MakePointerIterator(std::move(jr));
   result = new std::shared_ptr<xgboost::DMatrix>(xgboost::DMatrix::CreateOrMerge(itr, label_name));
   setHandle(jenv, jout, result);
