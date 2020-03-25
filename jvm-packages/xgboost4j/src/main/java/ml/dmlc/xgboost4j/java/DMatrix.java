@@ -20,11 +20,11 @@ import java.util.Spliterators;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
-import ml.dmlc.xgboost4j.java.arrow.ArrowRecordBatchHandle;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import ml.dmlc.xgboost4j.LabeledPoint;
+import ml.dmlc.xgboost4j.java.arrow.ArrowRecordBatchHandle;
 import ml.dmlc.xgboost4j.java.util.BigDenseMatrix;
 
 /**

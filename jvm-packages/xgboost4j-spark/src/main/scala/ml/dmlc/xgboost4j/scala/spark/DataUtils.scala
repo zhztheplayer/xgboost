@@ -190,6 +190,7 @@ object DataUtils extends Serializable {
     deterministicPartition: Boolean,
     dataFrames: DataFrame*): Array[RDD[ArrowRecordBatchHandle]] = {
     // todo
+    null
   }
 
 }
