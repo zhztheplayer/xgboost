@@ -18,7 +18,8 @@ package ml.dmlc.xgboost4j.scala
 
 import _root_.scala.collection.JavaConverters._
 import ml.dmlc.xgboost4j.LabeledPoint
-import ml.dmlc.xgboost4j.java.{DMatrix => JDMatrix, DataBatch, XGBoostError}
+import ml.dmlc.xgboost4j.java.arrow.ArrowRecordBatchHandle
+import ml.dmlc.xgboost4j.java.{DataBatch, XGBoostError, DMatrix => JDMatrix}
 
 class DMatrix private[scala](private[scala] val jDMatrix: JDMatrix) {
   /**
@@ -29,6 +30,17 @@ class DMatrix private[scala](private[scala] val jDMatrix: JDMatrix) {
    */
   def this(dataPath: String) {
     this(new JDMatrix(dataPath))
+  }
+
+  /**
+   *  init DMatrix from Iterator of ArrowRecordBatchHandle
+   *
+   * @param width The total number of feature fields
+   * @param dataIter An iterator of ArrowRecordBatchHandle
+   * @throws XGBoostError native error
+   */
+  def this(width: Int, dataIter: Iterator[ArrowRecordBatchHandle]) {
+    this(new JDMatrix(width, dataIter.asJava))
   }
 
   /**

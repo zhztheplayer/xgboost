@@ -16,7 +16,11 @@
 package ml.dmlc.xgboost4j.java;
 
 import java.util.Iterator;
+import java.util.Spliterators;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
+import ml.dmlc.xgboost4j.java.arrow.ArrowRecordBatchHandle;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -38,6 +42,22 @@ public class DMatrix {
   public static enum SparseType {
     CSR,
     CSC;
+  }
+
+  /**
+   * Create DMatrix from iterator of ArrowRecordBatchHandle.
+   *
+   * @param width  The total number of feature fields
+   * @param iter The data iterator of ArrowRecordBatchHandle to provide the data.
+   * @throws XGBoostError
+   */
+  public DMatrix(int width, Iterator<ArrowRecordBatchHandle> iter) throws XGBoostError {
+    if (iter == null) {
+      throw new NullPointerException("iter: null");
+    }
+    long[] out = new long[1];
+    XGBoostJNI.checkCall(XGBoostJNI.XGDMatrixCreateByMergingRecordBatchIters(width, iter, out));
+    handle = out[0];
   }
 
   /**

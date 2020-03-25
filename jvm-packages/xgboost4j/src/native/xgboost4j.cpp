@@ -194,17 +194,17 @@ class JRecordBatchReader : public arrow::RecordBatchReader {
 
     // jhandle flags
     jclass record_batch_handle_class
-      = jenv_->FindClass("Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle;");
+      = jenv_->FindClass("Lorg/apache/arrow/dataset/jni/ArrowRecordBatchHandle;");
     jclass record_batch_handle_field_class
-      = jenv_->FindClass("Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Field;");
+      = jenv_->FindClass("Lorg/apache/arrow/dataset/jni/ArrowRecordBatchHandle$Field;");
     jclass record_batch_handle_buffer_class
-      = jenv_->FindClass("Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Buffer;");
+      = jenv_->FindClass("Lorg/apache/arrow/dataset/jni/ArrowRecordBatchHandle$Buffer;");
     jmethodID record_batch_handle_get_num_rows = jenv_->GetMethodID(record_batch_handle_class,
                                                                     "getNumRows", "()J");
     jmethodID record_batch_handle_get_fields = jenv_->GetMethodID(record_batch_handle_class,
-                                                                  "getFields", "()[Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Field;");
+                                                                  "getFields", "()[Lorg/apache/arrow/dataset/jni/ArrowRecordBatchHandle$Field;");
     jmethodID record_batch_handle_get_buffers = jenv_->GetMethodID(record_batch_handle_class,
-                                                                   "getBuffers", "()[Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle$Buffer;");
+                                                                   "getBuffers", "()[Lorg/apache/arrow/dataset/jni/ArrowRecordBatchHandle$Buffer;");
     jmethodID record_batch_handle_field_get_length = jenv_->GetMethodID(record_batch_handle_field_class,
                                                                         "getLength", "()J");
     jmethodID record_batch_handle_field_get_null_count = jenv_->GetMethodID(record_batch_handle_field_class,

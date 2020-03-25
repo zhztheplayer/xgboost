@@ -25,7 +25,7 @@ import java.util.List;
  * @see <a href="https://github.com/apache/arrow">Apache Arrow</a>
  * @see <a href="https://github.com/Intel-bigdata/arrow">Intel optimized Arrow</a>
  */
-public class NativeRecordBatchHandle {
+public class ArrowRecordBatchHandle {
 
   private final long numRows;
   private final Field[] fields;
@@ -38,7 +38,7 @@ public class NativeRecordBatchHandle {
    * @param fields Metadata of fields
    * @param buffers Retained Arrow buffers
    */
-  public NativeRecordBatchHandle(long numRows, Field[] fields, Buffer[] buffers) {
+  public ArrowRecordBatchHandle(long numRows, Field[] fields, Buffer[] buffers) {
     this.numRows = numRows;
     this.fields = fields;
     this.buffers = buffers;

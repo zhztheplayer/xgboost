@@ -16,8 +16,8 @@
 
 package ml.dmlc.xgboost4j.scala.spark
 
+import ml.dmlc.xgboost4j.java.arrow.ArrowRecordBatchHandle
 import ml.dmlc.xgboost4j.{LabeledPoint => XGBLabeledPoint}
-
 import org.apache.spark.HashPartitioner
 import org.apache.spark.ml.feature.{LabeledPoint => MLLabeledPoint}
 import org.apache.spark.ml.linalg.{DenseVector, SparseVector, Vector, Vectors}
@@ -178,6 +178,18 @@ object DataUtils extends Serializable {
       }
     }
     repartitionRDDs(deterministicPartition, numWorkers, arrayOfRDDs)
+  }
+
+  private[spark] def convertDataFrameToArrowRecordBatchRDDs(
+    labelCol: Column,
+    featuresCol: Column,
+    weight: Column,
+    baseMargin: Column,
+    group: Option[Column],
+    numWorkers: Int,
+    deterministicPartition: Boolean,
+    dataFrames: DataFrame*): Array[RDD[ArrowRecordBatchHandle]] = {
+    // todo
   }
 
 }

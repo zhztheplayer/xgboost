@@ -19,6 +19,8 @@ package ml.dmlc.xgboost4j.scala.spark
 import java.io.File
 import java.nio.file.Files
 
+import ml.dmlc.xgboost4j.java.arrow.ArrowRecordBatchHandle
+
 import scala.collection.{AbstractIterator, mutable}
 import scala.util.Random
 import scala.collection.JavaConverters._
@@ -26,7 +28,7 @@ import ml.dmlc.xgboost4j.java.{IRabitTracker, Rabit, XGBoostError, RabitTracker 
 import ml.dmlc.xgboost4j.scala.rabit.RabitTracker
 import ml.dmlc.xgboost4j.scala.spark.CheckpointManager.CheckpointParam
 import ml.dmlc.xgboost4j.scala.spark.params.LearningTaskParams
-import ml.dmlc.xgboost4j.scala.{XGBoost => SXGBoost, _}
+import ml.dmlc.xgboost4j.scala.{Booster, XGBoost => SXGBoost, _}
 import ml.dmlc.xgboost4j.{LabeledPoint => XGBLabeledPoint}
 import org.apache.commons.io.FileUtils
 import org.apache.commons.logging.LogFactory
@@ -433,6 +435,32 @@ object XGBoost extends Serializable {
         }
     }
   }
+  private def trainForNonRankingWithArrowRDD(
+    width: Int,
+    trainingData: RDD[ArrowRecordBatchHandle],
+    xgbExecutionParams: XGBoostExecutionParams,
+    rabitEnv: java.util.Map[String, String],
+    checkpointRound: Int,
+    prevBooster: Booster): RDD[Option[(Booster, Map[String, Array[Float]])]] = {
+    val watchRDD = trainingData.mapPartitions(handles => {
+      val watches = Watches.buildWatchesWithArrowRecordBatchHandles(xgbExecutionParams, width,
+        handles,
+        getCacheDirName(xgbExecutionParams.useExternalMemory), true)
+      Iterator(watches)
+    }).cache()
+
+    val trainRP = createResourceProfile(trainingData, watchRDD)
+
+    // trigger the job to execute and cache the prev RDD
+    watchRDD.foreachPartition(() => _)
+    logger.error("RDD count : " + watchRDD.count())
+    watchRDD.coalesce(1,  // ExecutorInProcessCoalescePartitioner ignores numPartitions
+      partitionCoalescer = Some(new ExecutorInProcessCoalescePartitioner()))
+      .mapPartitions( watches => {
+        buildDistributedBooster(watches.next(), xgbExecutionParams, rabitEnv, checkpointRound,
+          xgbExecutionParams.obj, xgbExecutionParams.eval, prevBooster)
+      }).withResources(trainRP).cache()
+  }
 
   private def trainForNonRanking(
       trainingData: RDD[XGBLabeledPoint],
@@ -614,6 +642,75 @@ object XGBoost extends Serializable {
         asInstanceOf[RDD[Array[XGBLabeledPoint]]])
     } else {
       Right(cacheData(ifCacheDataBoolean, trainingData).asInstanceOf[RDD[XGBLabeledPoint]])
+    }
+  }
+
+  def trainDistributedWithArrowRDD(
+    width: Int,
+    trainingData: RDD[ArrowRecordBatchHandle],
+    params: Map[String, Any]):
+    (Booster, Map[String, Array[Float]]) = {
+    logger.info(s"Running XGBoost ${spark.VERSION} with parameters:\n${params.mkString("\n")}")
+    val xgbParamsFactory = new XGBoostExecutionParamsFactory(params, trainingData.sparkContext)
+    val xgbExecParams = xgbParamsFactory.buildXGBRuntimeParams
+    val xgbRabitParams = xgbParamsFactory.buildRabitParams.asJava
+    val sc = trainingData.sparkContext
+    val checkpointManager = new CheckpointManager(sc, xgbExecParams.checkpointParam.
+      checkpointPath)
+    checkpointManager.cleanUpHigherVersions(xgbExecParams.round)
+    val transformedTrainingData = trainingData
+    var prevBooster = checkpointManager.loadCheckpointAsBooster
+    try {
+      // Train for every ${savingRound} rounds and save the partially completed booster
+      val producedBooster = checkpointManager.getCheckpointRounds(
+        xgbExecParams.checkpointParam.checkpointInterval,
+        xgbExecParams.round).map {
+        checkpointRound: Int =>
+          // Compute number of active workers
+          val numActiveWorkers =
+            xgbExecParams.numWorkers/sc.getConf.getInt("spark.executor.cores", 1)
+          val tracker = startTracker(numActiveWorkers, xgbExecParams.trackerConf)
+          try {
+            val parallelismTracker = new SparkParallelismTracker(sc,
+              xgbExecParams.timeoutRequestWorkers,
+              xgbExecParams.numWorkers)
+            tracker.getWorkerEnvs().putAll(xgbRabitParams)
+            val boostersAndMetrics = trainForNonRankingWithArrowRDD(width, transformedTrainingData,
+              xgbExecParams, tracker.getWorkerEnvs(), checkpointRound, prevBooster)
+            val sparkJobThread = new Thread() {
+              override def run() {
+                // force the job
+                boostersAndMetrics.foreachPartition(() => _)
+              }
+            }
+            sparkJobThread.setUncaughtExceptionHandler(tracker)
+            sparkJobThread.start()
+            val trackerReturnVal = parallelismTracker.execute(tracker.waitFor(0L))
+            logger.info(s"Rabit returns with exit code $trackerReturnVal")
+            val (booster, metrics) = postTrackerReturnProcessing(trackerReturnVal,
+              boostersAndMetrics, sparkJobThread)
+            if (checkpointRound < xgbExecParams.round) {
+              prevBooster = booster
+              checkpointManager.updateCheckpoint(prevBooster)
+            }
+            (booster, metrics)
+          } finally {
+            tracker.stop()
+          }
+      }.last
+      // we should delete the checkpoint directory after a successful training
+      if (!xgbExecParams.checkpointParam.skipCleanCheckpoint) {
+        checkpointManager.cleanPath()
+      }
+      producedBooster
+    } catch {
+      case t: Throwable =>
+        // if the job was aborted due to an exception
+        logger.error("the job was aborted due to ", t)
+        trainingData.sparkContext.stop()
+        throw t
+    } finally {
+      uncacheTrainingData(xgbExecParams.cacheTrainingSet, transformedTrainingData)
     }
   }
 
@@ -900,6 +997,29 @@ private object Watches {
     val testMargin = fromBaseMarginsToArray(testBaseMargins.result().iterator)
     if (trainMargin.isDefined) trainMatrix.setBaseMargin(trainMargin.get)
     if (testMargin.isDefined) testMatrix.setBaseMargin(testMargin.get)
+    new Watches(Array(trainMatrix, testMatrix), Array("train", "test"), cacheDirName)
+  }
+
+  def buildWatchesWithArrowRecordBatchHandles(
+    xgbExecutionParams: XGBoostExecutionParams,
+    width: Int,
+    handles: Iterator[ArrowRecordBatchHandle],
+    cacheDirName: Option[String],
+    useBatch: Boolean): Watches = {
+    val trainTestRatio = xgbExecutionParams.xgbInputParams.trainTestRatio
+    val seed = xgbExecutionParams.xgbInputParams.seed
+    val r = new Random(seed)
+    val testBatches = mutable.ArrayBuffer.empty[ArrowRecordBatchHandle]
+    val trainBatches = handles.filter { handle =>
+      val accepted = r.nextDouble() <= trainTestRatio
+      if (!accepted) {
+        testBatches += handle
+      }
+      accepted
+    }
+    val trainMatrix = new DMatrix(width, trainBatches)
+    val testMatrix = new DMatrix(width, testBatches.iterator)
+
     new Watches(Array(trainMatrix, testMatrix), Array("train", "test"), cacheDirName)
   }
 

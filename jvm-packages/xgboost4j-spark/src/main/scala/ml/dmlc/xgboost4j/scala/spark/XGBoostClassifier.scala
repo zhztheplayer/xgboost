@@ -17,6 +17,7 @@
 package ml.dmlc.xgboost4j.scala.spark
 
 import ml.dmlc.xgboost4j.java.Rabit
+import ml.dmlc.xgboost4j.java.arrow.ArrowRecordBatchHandle
 import ml.dmlc.xgboost4j.scala.spark.params._
 import ml.dmlc.xgboost4j.scala.{Booster, DMatrix, EvalTrait, ObjectiveTrait, XGBoost => SXGBoost}
 import ml.dmlc.xgboost4j.{LabeledPoint => XGBLabeledPoint}
@@ -175,20 +176,34 @@ class XGBoostClassifier (
     } else {
       col($(baseMarginCol))
     }
-
-    val trainingSet: RDD[XGBLabeledPoint] = DataUtils.convertDataFrameToXGBLabeledPointRDDs(
-      col($(labelCol)), col($(featuresCol)), weight, baseMargin,
-      None, $(numWorkers), needDeterministicRepartitioning, dataset.asInstanceOf[DataFrame]).head
-    val evalRDDMap = getEvalSets(xgboostParams).map {
-      case (name, dataFrame) => (name,
-        DataUtils.convertDataFrameToXGBLabeledPointRDDs(col($(labelCol)), col($(featuresCol)),
-          weight, baseMargin, None, $(numWorkers), needDeterministicRepartitioning, dataFrame).head)
+    val (_booster, _metrics) = if (xgboostParams("arrowInput") == true) {
+      val trainingSet: RDD[ArrowRecordBatchHandle] = DataUtils
+        .convertDataFrameToArrowRecordBatchRDDs(
+          col($(labelCol)), col($(featuresCol)), weight, baseMargin,
+          None, $(numWorkers), needDeterministicRepartitioning,
+          dataset.asInstanceOf[DataFrame]).head
+      transformSchema(dataset.schema, logging = true)
+      val derivedXGBParamMap = MLlib2XGBoostParams
+      val width = dataset.schema.fields.length - 1
+      XGBoost.trainDistributedWithArrowRDD(width,
+        trainingSet, derivedXGBParamMap)
+      (null, null)
+    } else {
+      val trainingSet: RDD[XGBLabeledPoint] = DataUtils.convertDataFrameToXGBLabeledPointRDDs(
+        col($(labelCol)), col($(featuresCol)), weight, baseMargin,
+        None, $(numWorkers), needDeterministicRepartitioning, dataset.asInstanceOf[DataFrame]).head
+      val evalRDDMap = getEvalSets(xgboostParams).map {
+        case (name, dataFrame) => (name,
+          DataUtils.convertDataFrameToXGBLabeledPointRDDs(col($(labelCol)), col($(featuresCol)),
+            weight, baseMargin, None, $(numWorkers),
+            needDeterministicRepartitioning, dataFrame).head)
+      }
+      transformSchema(dataset.schema, logging = true)
+      val derivedXGBParamMap = MLlib2XGBoostParams
+      // All non-null param maps in XGBoostClassifier are in derivedXGBParamMap.
+      XGBoost.trainDistributed(trainingSet, derivedXGBParamMap,
+        hasGroup = false, evalRDDMap)
     }
-    transformSchema(dataset.schema, logging = true)
-    val derivedXGBParamMap = MLlib2XGBoostParams
-    // All non-null param maps in XGBoostClassifier are in derivedXGBParamMap.
-    val (_booster, _metrics) = XGBoost.trainDistributed(trainingSet, derivedXGBParamMap,
-      hasGroup = false, evalRDDMap)
     val model = new XGBoostClassificationModel(uid, _numClasses, _booster)
     val summary = XGBoostTrainingSummary(_metrics)
     model.setSummary(summary)
