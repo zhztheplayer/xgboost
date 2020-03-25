@@ -710,7 +710,7 @@ object XGBoost extends Serializable {
         trainingData.sparkContext.stop()
         throw t
     } finally {
-      uncacheTrainingData(xgbExecParams.cacheTrainingSet, transformedTrainingData)
+      uncacheTrainingArrowData(xgbExecParams.cacheTrainingSet, transformedTrainingData)
     }
   }
 
@@ -803,6 +803,14 @@ object XGBoost extends Serializable {
       } else {
         transformedTrainingData.right.get.unpersist()
       }
+    }
+  }
+
+  private def uncacheTrainingArrowData(
+    cacheTrainingSet: Boolean,
+    transformedTrainingData: RDD[Array[ArrowRecordBatchHandle]]): Unit = {
+    if (cacheTrainingSet) {
+      transformedTrainingData.unpersist()
     }
   }
 
