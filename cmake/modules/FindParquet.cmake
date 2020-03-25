@@ -60,7 +60,7 @@ if(PARQUET_HOME)
         )
     find_library(PARQUET_LIBRARIES NAMES parquet
         PATHS ${PARQUET_HOME} NO_DEFAULT_PATH
-        PATH_SUFFIXES "lib")
+        PATH_SUFFIXES "lib" "lib64")
     get_filename_component(PARQUET_LIBS ${PARQUET_LIBRARIES} PATH )
 
     # Try to autodiscover the Parquet ABI version
