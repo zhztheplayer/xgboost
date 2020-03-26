@@ -158,7 +158,8 @@ class XGBoostClassifier (
 
   override def fit(dataset: Dataset[_]): XGBoostClassificationModel = {
     if (debug) {
-      copyValues(train(dataset).setParent(this))
+      val labelCasted = dataset.withColumn($(labelCol), col($(labelCol)).cast(DoubleType))
+      copyValues(train(labelCasted).setParent(this))
     } else {
       super.fit(dataset)
     }
