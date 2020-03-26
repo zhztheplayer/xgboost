@@ -16,6 +16,7 @@
 
 package ml.dmlc.xgboost4j.scala.spark
 
+import com.google.common.base.Preconditions
 import ml.dmlc.xgboost4j.java.arrow.ArrowRecordBatchHandle
 import ml.dmlc.xgboost4j.java.util.UtilReflection
 import ml.dmlc.xgboost4j.{LabeledPoint => XGBLabeledPoint}
@@ -199,7 +200,7 @@ object DataUtils extends Serializable {
           override protected def preparations: Seq[Rule[SparkPlan]] = {
             Seq(
               InsertAdaptiveSparkPlan(AdaptiveExecutionContext(sparkSession)),
-//              PlanDynamicPruningFilters(sparkSession),
+              //              PlanDynamicPruningFilters(sparkSession),
               PlanSubqueries(sparkSession),
               EnsureRequirements(sparkSession.sessionState.conf),
               CollapseCodegenStages(sparkSession.sessionState.conf),
@@ -232,7 +233,11 @@ object DataUtils extends Serializable {
       }
     }
     // todo test
-    arrayOfRDDs.map(rdd => rdd.repartition(numWorkers))
+    arrayOfRDDs.foreach(rdd => {
+      Preconditions.checkArgument(rdd.getNumPartitions == numWorkers, "numWorkers " +
+        "must equal partition number when reading arrow input")
+    })
+    arrayOfRDDs
   }
 
 }

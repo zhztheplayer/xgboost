@@ -187,7 +187,6 @@ class XGBoostClassifier (
       col($(baseMarginCol))
     }
     val (_booster, _metrics) = if (debug) {
-      val plan = dataset.queryExecution.executedPlan
       val trainingSet: RDD[ArrowRecordBatchHandle] = DataUtils
         .convertDataFrameToArrowRecordBatchRDDs(
           col($(labelCol)), $(numWorkers), needDeterministicRepartitioning,
