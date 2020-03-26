@@ -505,7 +505,7 @@ object XGBoost extends Serializable {
     }
   }
 
-  private def createResourceProfile(trainingData: RDD[XGBLabeledPoint], watchRDD: RDD[Watches]) = {
+  private def createResourceProfile(trainingData: RDD[_], watchRDD: RDD[Watches]) = {
     val ereq: ExecutorResourceRequests = if (watchRDD.getResourceProfile() != null) {
       val ereqs = new ExecutorResourceRequests()
       watchRDD.getResourceProfile().executorResources.foreach { req =>
@@ -808,7 +808,7 @@ object XGBoost extends Serializable {
 
   private def uncacheTrainingArrowData(
     cacheTrainingSet: Boolean,
-    transformedTrainingData: RDD[Array[ArrowRecordBatchHandle]]): Unit = {
+    transformedTrainingData: RDD[ArrowRecordBatchHandle]): Unit = {
     if (cacheTrainingSet) {
       transformedTrainingData.unpersist()
     }
