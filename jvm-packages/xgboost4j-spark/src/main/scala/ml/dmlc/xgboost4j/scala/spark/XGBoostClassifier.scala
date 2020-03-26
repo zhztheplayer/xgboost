@@ -187,11 +187,11 @@ class XGBoostClassifier (
       col($(baseMarginCol))
     }
     val (_booster, _metrics) = if (debug) {
+      val plan = dataset.queryExecution.executedPlan
       val trainingSet: RDD[ArrowRecordBatchHandle] = DataUtils
         .convertDataFrameToArrowRecordBatchRDDs(
           col($(labelCol)), $(numWorkers), needDeterministicRepartitioning,
           dataset.asInstanceOf[DataFrame]).head
-      transformSchema(dataset.schema, logging = true)
       val derivedXGBParamMap = MLlib2XGBoostParams
       val width = dataset.schema.fields.length - 1
       XGBoost.trainDistributedWithArrowRDD(width,
