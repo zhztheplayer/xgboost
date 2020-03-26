@@ -216,7 +216,7 @@ object DataUtils extends Serializable {
       }
     }
     // todo test
-    repartitionRDDs(deterministicPartition, numWorkers, arrayOfRDDs)
+    arrayOfRDDs.map(rdd => rdd.repartition(numWorkers))
   }
 
 }
