@@ -201,8 +201,6 @@ object DataUtils extends Serializable {
         val qe = new QueryExecution(df.sparkSession, df.queryExecution.logical) {
           override protected def preparations: Seq[Rule[SparkPlan]] = {
             Seq(
-              // `AdaptiveSparkPlanExec` is a leaf node. If inserted, all the following rules will be no-op
-              // as the original plan is hidden behind `AdaptiveSparkPlanExec`.
               InsertAdaptiveSparkPlan(AdaptiveExecutionContext(sparkSession)),
               PlanDynamicPruningFilters(sparkSession),
               PlanSubqueries(sparkSession),
@@ -235,7 +233,7 @@ object DataUtils extends Serializable {
           }
         }
       }
-    })
+    }
     // todo test
     arrayOfRDDs.map(rdd => rdd.repartition(numWorkers))
   }
