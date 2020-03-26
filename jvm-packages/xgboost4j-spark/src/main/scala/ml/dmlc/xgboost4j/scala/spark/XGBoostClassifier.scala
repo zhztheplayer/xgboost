@@ -159,8 +159,9 @@ class XGBoostClassifier (
   override def fit(dataset: Dataset[_]): XGBoostClassificationModel = {
     if (debug) {
       copyValues(train(dataset).setParent(this))
+    } else {
+      super.fit(dataset)
     }
-    super.fit(dataset)
   }
 
   override protected def train(dataset: Dataset[_]): XGBoostClassificationModel = {
