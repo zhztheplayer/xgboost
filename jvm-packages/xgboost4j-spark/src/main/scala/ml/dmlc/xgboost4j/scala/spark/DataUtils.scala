@@ -234,8 +234,10 @@ object DataUtils extends Serializable {
     }
     // todo test
     arrayOfRDDs.foreach(rdd => {
-      Preconditions.checkArgument(rdd.getNumPartitions == numWorkers, "numWorkers " +
-        "must equal partition number when reading arrow input")
+      if (rdd.getNumPartitions != numWorkers) {
+        throw new IllegalArgumentException("numWorkers must equal partition " +
+          "number when reading arrow input")
+      }
     })
     arrayOfRDDs
   }
