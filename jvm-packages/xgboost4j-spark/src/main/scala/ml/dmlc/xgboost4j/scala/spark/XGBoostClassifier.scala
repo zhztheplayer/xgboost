@@ -154,6 +154,15 @@ class XGBoostClassifier (
     }
   }
 
+  val debug = true
+
+  override def fit(dataset: Dataset[_]): XGBoostClassificationModel = {
+    if (debug) {
+      copyValues(train(dataset).setParent(this))
+    }
+    super.fit(dataset)
+  }
+
   override protected def train(dataset: Dataset[_]): XGBoostClassificationModel = {
 
     if (!isDefined(evalMetric) || $(evalMetric).isEmpty) {
@@ -176,7 +185,7 @@ class XGBoostClassifier (
     } else {
       col($(baseMarginCol))
     }
-    val (_booster, _metrics) = if (xgboostParams("arrowInput") == true) {
+    val (_booster, _metrics) = if (debug) {
       val trainingSet: RDD[ArrowRecordBatchHandle] = DataUtils
         .convertDataFrameToArrowRecordBatchRDDs(
           col($(labelCol)), $(numWorkers), needDeterministicRepartitioning,
