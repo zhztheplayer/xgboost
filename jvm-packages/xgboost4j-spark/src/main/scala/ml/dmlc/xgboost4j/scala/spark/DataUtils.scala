@@ -25,6 +25,11 @@ import org.apache.spark.ml.feature.{LabeledPoint => MLLabeledPoint}
 import org.apache.spark.ml.linalg.{DenseVector, SparseVector, Vector, Vectors}
 import org.apache.spark.ml.param.Param
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.catalyst.rules.Rule
+import org.apache.spark.sql.execution.adaptive.{AdaptiveExecutionContext, InsertAdaptiveSparkPlan}
+import org.apache.spark.sql.execution.dynamicpruning.PlanDynamicPruningFilters
+import org.apache.spark.sql.execution.exchange.{EnsureRequirements, ReuseExchange}
+import org.apache.spark.sql.execution.{ApplyColumnarRulesAndInsertTransitions, CollapseCodegenStages, PlanSubqueries, QueryExecution, ReuseSubquery, SparkPlan}
 import org.apache.spark.sql.{Column, DataFrame, Row}
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.types.{FloatType, IntegerType}
@@ -193,7 +198,23 @@ object DataUtils extends Serializable {
 
     val arrayOfRDDs = dataFrames.toArray.map {
       df => {
-        val rdd: RDD[ColumnarBatch] = df.rdd.asInstanceOf[RDD[ColumnarBatch]] // fixme conversion
+        val qe = new QueryExecution(df.sparkSession, df.queryExecution.logical) {
+          override protected def preparations: Seq[Rule[SparkPlan]] = {
+            Seq(
+              // `AdaptiveSparkPlanExec` is a leaf node. If inserted, all the following rules will be no-op
+              // as the original plan is hidden behind `AdaptiveSparkPlanExec`.
+              InsertAdaptiveSparkPlan(AdaptiveExecutionContext(sparkSession)),
+              PlanDynamicPruningFilters(sparkSession),
+              PlanSubqueries(sparkSession),
+              EnsureRequirements(sparkSession.sessionState.conf),
+              CollapseCodegenStages(sparkSession.sessionState.conf),
+              ReuseExchange(sparkSession.sessionState.conf),
+              ReuseSubquery(sparkSession.sessionState.conf)
+            )
+          }
+        }
+
+        val rdd: RDD[ColumnarBatch] = qe.toRdd.asInstanceOf[RDD[ColumnarBatch]] // fixme conversion
         rdd.map {
           batch => {
             val fields = ListBuffer[ArrowRecordBatchHandle.Field]()
@@ -214,7 +235,7 @@ object DataUtils extends Serializable {
           }
         }
       }
-    }
+    })
     // todo test
     arrayOfRDDs.map(rdd => rdd.repartition(numWorkers))
   }
