@@ -237,8 +237,8 @@ class JRecordBatchReader : public arrow::RecordBatchReader {
           data.push_back(std::make_shared<arrow::Buffer>(reinterpret_cast<uint8_t *>(memory_address), size));
         }
         columns.push_back(arrow::ArrayData::Make(arrow::float32(), length, data));
-        *out = arrow::RecordBatch::Make(schema_, num_rows, columns);
       }
+      *out = arrow::RecordBatch::Make(schema_, num_rows, columns);
     } else {
       *out = nullptr;
     }
