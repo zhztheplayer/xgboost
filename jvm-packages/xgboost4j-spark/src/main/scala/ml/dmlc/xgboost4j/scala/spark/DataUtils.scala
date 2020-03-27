@@ -211,23 +211,28 @@ object DataUtils extends Serializable {
         }
 
         val rdd: RDD[ColumnarBatch] = qe.toRdd.asInstanceOf[RDD[ColumnarBatch]] // fixme conversion
-        rdd.map {
-          batch => {
-            val fields = ListBuffer[ArrowRecordBatchHandle.Field]()
-            val buffers = ListBuffer[ArrowRecordBatchHandle.Buffer]()
-            for (i <- 0 until batch.numRows()) {
-              val vector = batch.column(i).asInstanceOf[ArrowColumnVector]
-              val accessor = UtilReflection.getField(vector, "accessor")
-              val valueVector = UtilReflection.getField(accessor, "vector")
-                .asInstanceOf[ValueVector]
-              val bufs = valueVector.getBuffers(false);
-              fields.append(new ArrowRecordBatchHandle.Field(bufs.length, valueVector.getNullCount))
-              for (buf <- bufs) {
-                buffers.append(new ArrowRecordBatchHandle.Buffer(buf.memoryAddress(),
-                  buf.getReferenceManager.getSize, buf.getReferenceManager.getSize))
+        rdd.mapPartitions {
+          batches => {
+            batches.map {
+              batch => {
+                val fields = ListBuffer[ArrowRecordBatchHandle.Field]()
+                val buffers = ListBuffer[ArrowRecordBatchHandle.Buffer]()
+                for (i <- 0 until batch.numRows()) {
+                  val vector = batch.column(i).asInstanceOf[ArrowColumnVector]
+                  val accessor = UtilReflection.getField(vector, "accessor")
+                  val valueVector = UtilReflection.getField(accessor, "vector")
+                    .asInstanceOf[ValueVector]
+                  val bufs = valueVector.getBuffers(false);
+                  fields.append(new ArrowRecordBatchHandle.Field(bufs.length,
+                    valueVector.getNullCount))
+                  for (buf <- bufs) {
+                    buffers.append(new ArrowRecordBatchHandle.Buffer(buf.memoryAddress(),
+                      buf.getReferenceManager.getSize, buf.getReferenceManager.getSize))
+                  }
+                }
+                new ArrowRecordBatchHandle(batch.numRows(), fields.toArray, buffers.toArray)
               }
             }
-            new ArrowRecordBatchHandle(batch.numRows(), fields.toArray, buffers.toArray)
           }
         }
       }
