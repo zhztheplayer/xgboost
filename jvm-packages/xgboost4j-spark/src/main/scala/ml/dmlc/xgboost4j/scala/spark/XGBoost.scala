@@ -452,7 +452,7 @@ object XGBoost extends Serializable {
     val trainRP = createResourceProfile(trainingData, watchRDD)
 
     // trigger the job to execute and cache the prev RDD
-    watchRDD.foreachPartition(() => _)
+    watchRDD.foreachPartition(() => _) // fixme remove this
     logger.error("RDD count : " + watchRDD.count())
     watchRDD.coalesce(1,  // ExecutorInProcessCoalescePartitioner ignores numPartitions
       partitionCoalescer = Some(new ExecutorInProcessCoalescePartitioner()))
