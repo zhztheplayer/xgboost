@@ -191,6 +191,7 @@ class XGBoostClassifier (
         .convertDataFrameToArrowRecordBatchRDDs(
           col($(labelCol)), $(numWorkers), needDeterministicRepartitioning,
           dataset.asInstanceOf[DataFrame]).head
+      trainingSet.foreachPartition(_ => {})
       val derivedXGBParamMap = MLlib2XGBoostParams
       val width = dataset.schema.fields.length - 1
       XGBoost.trainDistributedWithArrowRDD(width,
