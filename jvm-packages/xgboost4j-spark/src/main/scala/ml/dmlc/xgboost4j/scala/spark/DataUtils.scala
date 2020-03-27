@@ -213,8 +213,12 @@ object DataUtils extends Serializable {
         val rdd: RDD[ColumnarBatch] = qe.toRdd.asInstanceOf[RDD[ColumnarBatch]] // fixme conversion
         rdd.mapPartitions {
           batches => {
+            println("DEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEBUG")
+            println(batches)
             batches.map {
               batch => {
+                println("DEEEEEEEEEEEEEBUG")
+                println(batch)
                 val fields = ListBuffer[ArrowRecordBatchHandle.Field]()
                 val buffers = ListBuffer[ArrowRecordBatchHandle.Buffer]()
                 for (i <- 0 until batch.numRows()) {
