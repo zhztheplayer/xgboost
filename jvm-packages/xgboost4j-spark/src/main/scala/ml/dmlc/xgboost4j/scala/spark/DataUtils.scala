@@ -214,7 +214,6 @@ object DataUtils extends Serializable {
         val rdd: RDD[ColumnarBatch] = qe.executedPlan.executeColumnar()
         rdd.map {
           batch => {
-            println(batch)
             val fields = ListBuffer[ArrowRecordBatchHandle.Field]()
             val buffers = ListBuffer[ArrowRecordBatchHandle.Buffer]()
             for (i <- 0 until batch.numCols()) {
