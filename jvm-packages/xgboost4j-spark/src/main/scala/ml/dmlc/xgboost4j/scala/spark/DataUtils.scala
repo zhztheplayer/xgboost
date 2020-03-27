@@ -217,7 +217,7 @@ object DataUtils extends Serializable {
             println(batch)
             val fields = ListBuffer[ArrowRecordBatchHandle.Field]()
             val buffers = ListBuffer[ArrowRecordBatchHandle.Buffer]()
-            for (i <- 0 until batch.numRows()) {
+            for (i <- 0 until batch.numCols()) {
               val vector = batch.column(i).asInstanceOf[ArrowColumnVector]
               val accessor = UtilReflection.getField(vector, "accessor")
               val valueVector = UtilReflection.getField(accessor, "accessor")
