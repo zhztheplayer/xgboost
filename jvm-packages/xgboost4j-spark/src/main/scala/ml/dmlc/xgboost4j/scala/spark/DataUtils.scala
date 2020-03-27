@@ -220,7 +220,7 @@ object DataUtils extends Serializable {
             for (i <- 0 until batch.numRows()) {
               val vector = batch.column(i).asInstanceOf[ArrowColumnVector]
               val accessor = UtilReflection.getField(vector, "accessor")
-              val valueVector = UtilReflection.getField(accessor, "vector")
+              val valueVector = UtilReflection.getField(accessor, "accessor")
                 .asInstanceOf[ValueVector]
               val bufs = valueVector.getBuffers(false);
               fields.append(new ArrowRecordBatchHandle.Field(bufs.length,
