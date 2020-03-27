@@ -25,6 +25,7 @@ import org.apache.spark.HashPartitioner
 import org.apache.spark.ml.feature.{LabeledPoint => MLLabeledPoint}
 import org.apache.spark.ml.linalg.{DenseVector, SparseVector, Vector, Vectors}
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution.adaptive.{AdaptiveExecutionContext, InsertAdaptiveSparkPlan}
 import org.apache.spark.sql.execution.exchange.{EnsureRequirements, ReuseExchange}
@@ -210,11 +211,12 @@ object DataUtils extends Serializable {
           }
         }
 
-        val rdd: RDD[ColumnarBatch] = qe.toRdd.asInstanceOf[RDD[ColumnarBatch]] // fixme conversion
+        val rdd: RDD[InternalRow] = qe.toRdd // fixme conversion
         rdd.mapPartitions {
           batches => {
             batches.toArray.map {
-              batch => {
+              row => {
+                val batch = row.asInstanceOf[ColumnarBatch]
                 println("DEEEEEEEEEEEEEBUG")
                 println(batch)
                 val fields = ListBuffer[ArrowRecordBatchHandle.Field]()
