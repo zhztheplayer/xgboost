@@ -211,7 +211,7 @@ object DataUtils extends Serializable {
           }
         }
 
-        val rdd: RDD[ColumnarBatch] = qe.toRdd.asInstanceOf[RDD[ColumnarBatch]] // fixme conversion
+        val rdd: RDD[ColumnarBatch] = qe.executedPlan.executeColumnar()
         rdd.mapPartitions {
           batches => {
             batches.toArray.map {
