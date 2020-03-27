@@ -176,7 +176,7 @@ void SimpleCSRSource::CopyFrom(arrow::RecordBatchIterator& batches, std::string 
       std::cout << "sp_batch-> num_rows(): " << sp_batch->num_rows() << "\n" << std::flush;
       std::cout << "sp_batch->GetColumnByName(label)->length(): " << sp_batch->GetColumnByName(label)->length() << "\n" << std::flush;
       std::cout << "sp_batch->column(0)->length(): " << sp_batch->column(0)->length() << "\n" << std::flush;
-      std::cout << "sp_batch->column(45)->length(): " << sp_batch->column(46)->length() << "\n" << std::flush;
+      std::cout << "sp_batch->column(46)->length(): " << sp_batch->column(46)->length() << "\n" << std::flush;
       // num_row_
       int64_t batch_num_rows = sp_batch->num_rows();
       info.num_row_ += batch_num_rows;
