@@ -194,11 +194,11 @@ class JRecordBatchReader : public arrow::RecordBatchReader {
 
     // jhandle flags
     jclass record_batch_handle_class
-      = jenv_->FindClass("Lorg/apache/arrow/dataset/jni/ArrowRecordBatchHandle;");
+      = jenv_->FindClass("org/apache/arrow/dataset/jni/ArrowRecordBatchHandle");
     jclass record_batch_handle_field_class
-      = jenv_->FindClass("Lorg/apache/arrow/dataset/jni/ArrowRecordBatchHandle$Field;");
+      = jenv_->FindClass("org/apache/arrow/dataset/jni/ArrowRecordBatchHandle$Field");
     jclass record_batch_handle_buffer_class
-      = jenv_->FindClass("Lorg/apache/arrow/dataset/jni/ArrowRecordBatchHandle$Buffer;");
+      = jenv_->FindClass("org/apache/arrow/dataset/jni/ArrowRecordBatchHandle$Buffer");
     jmethodID record_batch_handle_get_num_rows = jenv_->GetMethodID(record_batch_handle_class,
                                                                     "getNumRows", "()J");
     jmethodID record_batch_handle_get_fields = jenv_->GetMethodID(record_batch_handle_class,
