@@ -8,12 +8,12 @@ public class UtilReflection {
 
   }
 
-  public static <T> T getField(Object object, String fieldName) {
+  public static Object getField(Object object, String fieldName) {
     Field field = null;
     try {
       field = object.getClass().getDeclaredField(fieldName);
       field.setAccessible(true);
-      return (T) field.get(object);
+      return field.get(object);
     } catch (NoSuchFieldException | IllegalAccessException e) {
       throw new RuntimeException(e);
     } finally {
