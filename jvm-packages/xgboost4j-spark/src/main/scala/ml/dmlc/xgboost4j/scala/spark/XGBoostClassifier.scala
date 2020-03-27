@@ -195,7 +195,6 @@ class XGBoostClassifier (
       val width = dataset.schema.fields.length - 1
       XGBoost.trainDistributedWithArrowRDD(width,
         trainingSet, derivedXGBParamMap)
-      (null, null)
     } else {
       val trainingSet: RDD[XGBLabeledPoint] = DataUtils.convertDataFrameToXGBLabeledPointRDDs(
         col($(labelCol)), col($(featuresCol)), weight, baseMargin,
