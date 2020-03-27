@@ -171,13 +171,13 @@ void SimpleCSRSource::CopyFrom(arrow::RecordBatchIterator& batches, std::string 
   for (auto result : batches) {
     if (result.ok()) {
       const std::shared_ptr<arrow::RecordBatch>& sp_batch = result.ValueOrDie();
-      std::cout << "sp_batch->schema(): " << sp_batch->schema() << "\n" << std::flush;
+      std::cout << "sp_batch->schema(): " << sp_batch->schema().get() << "\n" << std::flush;
       std::cout << "label: " << label << "\n" << std::flush;
       std::cout << "sp_batch-> num_columns(): " << sp_batch->num_columns() << "\n" << std::flush;
       std::cout << "sp_batch-> num_rows(): " << sp_batch->num_rows() << "\n" << std::flush;
-      std::cout << "sp_batch->GetColumnByName(label): " << sp_batch->GetColumnByName(label) << "\n" << std::flush;
-      std::cout << "sp_batch->column(0): " << sp_batch->column(0) << "\n" << std::flush;
-      std::cout << "sp_batch->column(46): " << sp_batch->column(46) << "\n" << std::flush;
+      std::cout << "sp_batch->GetColumnByName(label): " << sp_batch->GetColumnByName(label).get() << "\n" << std::flush;
+      std::cout << "sp_batch->column(0): " << sp_batch->column(0).get() << "\n" << std::flush;
+      std::cout << "sp_batch->column(46): " << sp_batch->column(46).get() << "\n" << std::flush;
       std::cout << "sp_batch->GetColumnByName(label)->length(): " << sp_batch->GetColumnByName(label)->length() << "\n" << std::flush;
       std::cout << "sp_batch->column(0)->length(): " << sp_batch->column(0)->length() << "\n" << std::flush;
       std::cout << "sp_batch->column(46)->length(): " << sp_batch->column(46)->length() << "\n" << std::flush;
