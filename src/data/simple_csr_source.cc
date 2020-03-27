@@ -172,6 +172,9 @@ void SimpleCSRSource::CopyFrom(arrow::RecordBatchIterator& batches, std::string 
     if (result.ok()) {
       const std::shared_ptr<arrow::RecordBatch>& sp_batch = result.ValueOrDie();
       std::cout << "sp_batch->schema(): " << sp_batch->schema().get() << "\n" << std::flush;
+      for (std::string name : sp_batch->schema()->field_names()) {
+        std::cout << "name: " << name << "\n" << std::flush;
+      }
       std::cout << "label: " << label << "\n" << std::flush;
       std::cout << "sp_batch-> num_columns(): " << sp_batch->num_columns() << "\n" << std::flush;
       std::cout << "sp_batch-> num_rows(): " << sp_batch->num_rows() << "\n" << std::flush;
