@@ -221,11 +221,10 @@ class JRecordBatchReader : public arrow::RecordBatchReader {
       jlong num_rows = jenv_->CallLongMethod(batch, record_batch_handle_get_num_rows);
       jobjectArray fields = (jobjectArray) jenv_->CallObjectMethod(batch, record_batch_handle_get_fields);
       jobjectArray buffers = (jobjectArray) jenv_->CallObjectMethod(batch, record_batch_handle_get_buffers);
-      jsize width = jenv_->GetArrayLength(fields);
       // todo assert length == schema.length
       std::vector<std::shared_ptr<arrow::ArrayData>> columns;
       int buffer_index = 0;
-      for (int i = 0; i < width + 1; i++) {
+      for (int i = 0; i < jenv_->GetArrayLength(fields); i++) {
         jobject field = jenv_->GetObjectArrayElement(fields, i);
         jlong length = jenv_->CallLongMethod(field, record_batch_handle_field_get_length);
         jlong null_count = jenv_->CallLongMethod(field, record_batch_handle_field_get_null_count);
