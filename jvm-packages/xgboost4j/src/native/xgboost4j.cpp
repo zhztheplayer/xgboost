@@ -172,7 +172,7 @@ class JRecordBatchReader : public arrow::RecordBatchReader {
                                                                              label_name_(std::move(label_name)),
                                                                              width_(width) {
     std::vector<std::shared_ptr<arrow::Field>> fields;
-    fields.push_back(std::make_shared<arrow::Field>(std::move(label_name), arrow::float32()));
+    fields.push_back(std::make_shared<arrow::Field>(label_name_, arrow::float32()));
     for (int i = 0; i < width; i++) {
       fields.push_back(std::make_shared<arrow::Field>("v" + std::to_string(i), arrow::float32()));
     }
