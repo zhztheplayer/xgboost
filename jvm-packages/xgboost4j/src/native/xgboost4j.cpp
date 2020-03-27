@@ -230,7 +230,7 @@ class JRecordBatchReader : public arrow::RecordBatchReader {
         jlong length = jenv_->CallLongMethod(field, record_batch_handle_field_get_length);
         jlong null_count = jenv_->CallLongMethod(field, record_batch_handle_field_get_null_count);
         std::vector<std::shared_ptr<arrow::Buffer>> data;
-        for (int j = 0; j < length; j++) {
+        for (int j = 0; j < length; j++, buffer_index++) {
           jobject jbuffer = jenv_->GetObjectArrayElement(buffers, buffer_index);
           jlong memory_address = jenv_->CallLongMethod(jbuffer, record_batch_handle_buffer_get_memory_address);
           jlong size = jenv_->CallLongMethod(jbuffer, record_batch_handle_buffer_get_size);
