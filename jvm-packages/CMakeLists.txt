@@ -21,4 +21,6 @@ set_target_properties(
 target_link_libraries(xgboost4j
   PRIVATE
   ${LINKED_LIBRARIES_PRIVATE}
-  ${JAVA_JVM_LIBRARY})
+  ${JAVA_JVM_LIBRARY}
+  ${ARROW_STATIC_LIB}
+  ${PARQUET_STATIC_LIB})
