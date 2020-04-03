@@ -16,7 +16,6 @@
 
 package ml.dmlc.xgboost4j.scala.spark
 
-import com.google.common.base.Preconditions
 import ml.dmlc.xgboost4j.java.arrow.ArrowRecordBatchHandle
 import ml.dmlc.xgboost4j.java.util.UtilReflection
 import ml.dmlc.xgboost4j.{LabeledPoint => XGBLabeledPoint}
@@ -25,8 +24,8 @@ import org.apache.spark.HashPartitioner
 import org.apache.spark.ml.feature.{LabeledPoint => MLLabeledPoint}
 import org.apache.spark.ml.linalg.{DenseVector, SparseVector, Vector, Vectors}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.rules.Rule
+import org.apache.spark.sql.dynamicpruning.PlanDynamicPruningFilters
 import org.apache.spark.sql.execution.adaptive.{AdaptiveExecutionContext, InsertAdaptiveSparkPlan}
 import org.apache.spark.sql.execution.exchange.{EnsureRequirements, ReuseExchange}
 import org.apache.spark.sql.execution._
@@ -201,7 +200,7 @@ object DataUtils extends Serializable {
           override protected def preparations: Seq[Rule[SparkPlan]] = {
             Seq(
               InsertAdaptiveSparkPlan(AdaptiveExecutionContext(sparkSession)),
-              //              PlanDynamicPruningFilters(sparkSession),
+              PlanDynamicPruningFilters(sparkSession),
               PlanSubqueries(sparkSession),
               EnsureRequirements(sparkSession.sessionState.conf),
               CollapseCodegenStages(sparkSession.sessionState.conf),
