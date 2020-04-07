@@ -135,7 +135,6 @@ bool BatchedDMatrix::AddBatch(std::unique_ptr<SimpleCSRSource>&& batch) {
   pthread_mutex_unlock(&lock);
 
   sources_.push_front(std::move(batch));
-  newMat_ = nullptr;
   std::cout << "BatchedDMatrix: Batch added. Updated num_row_: " << info_->num_row_ << "\n" << std::flush;
   return true;
 }
