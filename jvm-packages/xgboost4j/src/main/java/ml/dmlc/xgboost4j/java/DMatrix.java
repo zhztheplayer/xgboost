@@ -59,7 +59,7 @@ public class DMatrix {
     }
     long[] out = new long[1];
     XGBoostJNI.checkCall(XGBoostJNI.XGDMatrixCreateByMergingRecordBatchIters(labelColOffset,
-      width, iter, out));
+        width, iter, out));
     handle = out[0];
   }
 
