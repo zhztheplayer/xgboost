@@ -84,9 +84,8 @@ BatchedDMatrix* BatchedDMatrix::getBatchedDMatrix() {
   std::lock_guard<std::mutex> lg(batchMutex_);
   if (!newMat_) {
     newMat_ = new BatchedDMatrix();
-    std::cout << "Creating BatchedDMatrix: " << newMat_ << "\n" << std::flush;
+    std::cout << "Creating BatchedDMatrix... " << "\n" << std::flush;
   }
-  std::cout << "Returning BatchedDMatrix: " << newMat_ << "\n" << std::flush;
   return newMat_;
 }
 
