@@ -215,7 +215,7 @@ object DataUtils extends Serializable {
         val plan = qe.executedPlan
         val labelArray = plan.schema.fields.zipWithIndex.filter {
           case (f, i) => {
-            if (Objects.equals(f.name, labelCol)) true else false
+            if (Objects.equals(f.name, labelCol.toString())) true else false
           }
         }.toArray
         if (labelArray.length == 0) {
