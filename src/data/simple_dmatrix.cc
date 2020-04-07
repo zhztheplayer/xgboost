@@ -103,7 +103,11 @@ const MetaInfo& BatchedDMatrix::Info() const {
 pthread_mutex_t lock;
 
 bool BatchedDMatrix::AddBatch(std::unique_ptr<SimpleCSRSource>&& batch) {
-//  std::unique_lock<std::mutex> ul(batchMutex_);
+  if (batch->info.num_row_ == 0) {
+    // ignore the input CSR source if it is empty
+    return true;
+  }
+  //  std::unique_lock<std::mutex> ul(batchMutex_);
   pthread_mutex_lock(&lock);
   // CreateInfo
   auto& src_labels = batch->info.labels_.HostVector();
