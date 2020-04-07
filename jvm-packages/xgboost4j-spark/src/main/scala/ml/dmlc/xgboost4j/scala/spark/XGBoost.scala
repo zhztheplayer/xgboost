@@ -354,6 +354,8 @@ object XGBoost extends Serializable {
           s"detected an empty partition in the training data, partition ID:" +
             s" ${TaskContext.getPartitionId()}")
       }
+      logger.info(s"DMatrix with " + s"${watches.toMap("train").rowNum}" + s" added to booster, " +
+        s"partition ID: " + s"${TaskContext.getPartitionId()}")
       val taskId = TaskContext.getPartitionId().toString
       rabitEnv.put("DMLC_TASK_ID", taskId)
       rabitEnv.put("DMLC_WORKER_STOP_PROCESS_ON_ERROR", "false")
