@@ -188,13 +188,13 @@ class XGBoostClassifier (
       col($(baseMarginCol))
     }
     val (_booster, _metrics) = if (columnar) {
-      val trainingSet: RDD[ArrowRecordBatchHandle] = DataUtils
+      val (trainingSet: RDD[ArrowRecordBatchHandle], labelColOffset: Int) = DataUtils
         .convertDataFrameToArrowRecordBatchRDDs(
           col($(labelCol)), $(numWorkers), needDeterministicRepartitioning,
           dataset.asInstanceOf[DataFrame]).head
       val derivedXGBParamMap = MLlib2XGBoostParams
-      val width = dataset.schema.fields.length - 1
-      XGBoost.trainDistributedWithArrowRDD(width,
+      val width = dataset.schema.fields.length
+      XGBoost.trainDistributedWithArrowRDD(labelColOffset, width,
         trainingSet, derivedXGBParamMap)
     } else {
       val trainingSet: RDD[XGBLabeledPoint] = DataUtils.convertDataFrameToXGBLabeledPointRDDs(

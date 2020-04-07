@@ -438,6 +438,7 @@ object XGBoost extends Serializable {
     }
   }
   private def trainForNonRankingWithArrowRDD(
+    labelColOffset: Int,
     width: Int,
     trainingData: RDD[ArrowRecordBatchHandle],
     xgbExecutionParams: XGBoostExecutionParams,
@@ -445,9 +446,11 @@ object XGBoost extends Serializable {
     checkpointRound: Int,
     prevBooster: Booster): RDD[Option[(Booster, Map[String, Array[Float]])]] = {
     val watchRDD = trainingData.mapPartitions(handles => {
-      val watches = Watches.buildWatchesWithArrowRecordBatchHandles(xgbExecutionParams, width,
+      val watches = Watches.buildWatchesWithArrowRecordBatchHandles(xgbExecutionParams,
+        labelColOffset,
+        width,
         handles,
-        getCacheDirName(xgbExecutionParams.useExternalMemory), true)
+        getCacheDirName(xgbExecutionParams.useExternalMemory))
       Iterator(watches)
     }).cache()
 
@@ -648,6 +651,7 @@ object XGBoost extends Serializable {
   }
 
   def trainDistributedWithArrowRDD(
+    labelColOffset: Int,
     width: Int,
     trainingData: RDD[ArrowRecordBatchHandle],
     params: Map[String, Any]):
@@ -677,8 +681,9 @@ object XGBoost extends Serializable {
               xgbExecParams.timeoutRequestWorkers,
               xgbExecParams.numWorkers)
             tracker.getWorkerEnvs().putAll(xgbRabitParams)
-            val boostersAndMetrics = trainForNonRankingWithArrowRDD(width, transformedTrainingData,
-              xgbExecParams, tracker.getWorkerEnvs(), checkpointRound, prevBooster)
+            val boostersAndMetrics = trainForNonRankingWithArrowRDD(labelColOffset, width,
+              transformedTrainingData, xgbExecParams, tracker.getWorkerEnvs(),
+              checkpointRound, prevBooster)
             val sparkJobThread = new Thread() {
               override def run() {
                 // force the job
@@ -1012,10 +1017,10 @@ private object Watches {
 
   def buildWatchesWithArrowRecordBatchHandles(
     xgbExecutionParams: XGBoostExecutionParams,
+    labelColOffset: Int,
     width: Int,
     handles: Iterator[ArrowRecordBatchHandle],
-    cacheDirName: Option[String],
-    useBatch: Boolean): Watches = {
+    cacheDirName: Option[String]): Watches = {
     val trainTestRatio = xgbExecutionParams.xgbInputParams.trainTestRatio
     val seed = xgbExecutionParams.xgbInputParams.seed
     val r = new Random(seed)
@@ -1027,8 +1032,8 @@ private object Watches {
       }
       accepted
     }
-    val trainMatrix = new DMatrix(width, trainBatches)
-    val testMatrix = new DMatrix(width, testBatches.iterator)
+    val trainMatrix = new DMatrix(labelColOffset, width, trainBatches)
+    val testMatrix = new DMatrix(labelColOffset, width, testBatches.iterator)
 
     new Watches(Array(trainMatrix, testMatrix), Array("train", "test"), cacheDirName)
   }

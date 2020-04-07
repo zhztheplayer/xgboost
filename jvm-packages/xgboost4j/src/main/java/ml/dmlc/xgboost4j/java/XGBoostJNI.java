@@ -52,7 +52,7 @@ class XGBoostJNI {
 
   public final static native String XGBGetLastError();
 
-  final static native int XGDMatrixCreateByMergingRecordBatchIters(int width, java.util.Iterator<ArrowRecordBatchHandle> iter,
+  final static native int XGDMatrixCreateByMergingRecordBatchIters(int labelColOffset, int width, java.util.Iterator<ArrowRecordBatchHandle> iter,
                                                                    long[] out);
 
   final static native int XGDMatrixCreateByMergingDataIters(java.util.Iterator<DataBatch> iter,

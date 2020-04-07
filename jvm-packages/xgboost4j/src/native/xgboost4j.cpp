@@ -168,11 +168,8 @@ JNIEXPORT jstring JNICALL Java_ml_dmlc_xgboost4j_java_XGBoostJNI_XGBGetLastError
 
 class JRecordBatchReader : public arrow::RecordBatchReader {
  public:
-  JRecordBatchReader(JNIEnv *jenv, jobject &jiter, std::string label_name, jint width) : jenv_(jenv), jiter_(jiter),
-                                                                             label_name_(std::move(label_name)),
-                                                                             width_(width) {
+  JRecordBatchReader(JNIEnv *jenv, jobject &jiter, jint width) : jenv_(jenv), jiter_(jiter), width_(width) {
     std::vector<std::shared_ptr<arrow::Field>> fields;
-    fields.push_back(std::make_shared<arrow::Field>(label_name_, arrow::float32()));
     for (int i = 0; i < width; i++) {
       fields.push_back(std::make_shared<arrow::Field>("v" + std::to_string(i), arrow::float32()));
     }
@@ -258,7 +255,6 @@ class JRecordBatchReader : public arrow::RecordBatchReader {
  private:
   JNIEnv *jenv_;
   jobject jiter_;
-  std::string label_name_;
   std::shared_ptr<arrow::Schema> schema_;
   jint width_;
 };
@@ -266,14 +262,14 @@ class JRecordBatchReader : public arrow::RecordBatchReader {
 /*
  * Class:     ml_dmlc_xgboost4j_java_XGBoostJNI
  * Method:    XGDMatrixCreateByMergingRecordBatchIters
- * Signature: (ILjava/util/Iterator;[J)I
+ * Signature: (IILjava/util/Iterator;[J)I
  */
 JNIEXPORT jint JNICALL Java_ml_dmlc_xgboost4j_java_XGBoostJNI_XGDMatrixCreateByMergingRecordBatchIters
-    (JNIEnv *jenv, jclass jcls, jint width, jobject jiter, jlongArray jout) {
+    (JNIEnv *jenv, jclass jcls, jint label_name_offset, jint width, jobject jiter, jlongArray jout) {
   DMatrixHandle result;
-  std::string label_name = "label";
+  std::string label_name = "v" + std::to_string(label_name_offset);
   std::unique_ptr<arrow::RecordBatchReader> jr;
-  jr.reset(new JRecordBatchReader(jenv, jiter, label_name, width)); // fixme width
+  jr.reset(new JRecordBatchReader(jenv, jiter, width));
   arrow::RecordBatchIterator itr = arrow::MakePointerIterator(std::move(jr));
   result = new std::shared_ptr<xgboost::DMatrix>(xgboost::DMatrix::CreateOrMerge(itr, label_name));
   setHandle(jenv, jout, result);

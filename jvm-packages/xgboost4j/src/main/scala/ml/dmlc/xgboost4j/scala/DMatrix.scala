@@ -35,12 +35,13 @@ class DMatrix private[scala](private[scala] val jDMatrix: JDMatrix) {
   /**
    *  init DMatrix from Iterator of ArrowRecordBatchHandle
    *
+   * @param labelCol The index of label column among list of all columns
    * @param width The total number of feature fields
    * @param dataIter An iterator of ArrowRecordBatchHandle
    * @throws XGBoostError native error
    */
-  def this(width: Int, dataIter: Iterator[ArrowRecordBatchHandle]) {
-    this(new JDMatrix(width, dataIter.asJava))
+  def this(labelCol: Int, width: Int, dataIter: Iterator[ArrowRecordBatchHandle]) {
+    this(new JDMatrix(labelCol, width, dataIter.asJava))
   }
 
   /**

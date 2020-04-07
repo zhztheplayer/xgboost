@@ -16,6 +16,8 @@
 
 package ml.dmlc.xgboost4j.scala.spark
 
+import java.util.Objects
+
 import ml.dmlc.xgboost4j.java.arrow.ArrowRecordBatchHandle
 import ml.dmlc.xgboost4j.java.util.UtilReflection
 import ml.dmlc.xgboost4j.{LabeledPoint => XGBLabeledPoint}
@@ -192,7 +194,7 @@ object DataUtils extends Serializable {
     labelCol: Column,
     numWorkers: Int,
     deterministicPartition: Boolean,
-    dataFrames: DataFrame*): Array[RDD[ArrowRecordBatchHandle]] = {
+    dataFrames: DataFrame*): Array[(RDD[ArrowRecordBatchHandle], Int)] = {
 
     val arrayOfRDDs = dataFrames.toArray.map {
       df => {
@@ -210,8 +212,20 @@ object DataUtils extends Serializable {
           }
         }
 
-        val rdd: RDD[ColumnarBatch] = qe.executedPlan.executeColumnar()
-        rdd.map {
+        val plan = qe.executedPlan
+        val labelArray = plan.schema.fields.zipWithIndex.filter {
+          case (f, i) => {
+            if (Objects.equals(f.name, labelCol)) true else false
+          }
+        }.toArray
+        if (labelArray.length == 0) {
+          throw new IllegalArgumentException("label column not found")
+        }
+        if (labelArray.length != 1) {
+          throw new IllegalArgumentException("clashed label column, aborting")
+        }
+        val rdd: RDD[ColumnarBatch] = plan.executeColumnar()
+        (rdd.map {
           batch => {
             val fields = ListBuffer[ArrowRecordBatchHandle.Field]()
             val buffers = ListBuffer[ArrowRecordBatchHandle.Buffer]()
@@ -230,12 +244,12 @@ object DataUtils extends Serializable {
             }
             new ArrowRecordBatchHandle(batch.numRows(), fields.toArray, buffers.toArray)
           }
-        }
+        }, labelArray(0)._2)
       }
     }
     // todo test
     arrayOfRDDs.foreach(rdd => {
-      if (rdd.getNumPartitions != numWorkers) {
+      if (rdd._1.getNumPartitions != numWorkers) {
         throw new IllegalArgumentException("numWorkers must equal partition " +
           "number when reading arrow input")
       }
